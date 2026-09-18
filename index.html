@@ -99,54 +99,120 @@
   .host-login-form button { padding: 9px 18px; font-size: .88rem; }
 
   /* ---------- host: the screen-share part ---------- */
-  .presenter {
-    min-height: calc(100vh - 84px);
-    min-height: calc(100dvh - 84px);
-    display: flex; flex-direction: column; justify-content: center;
+  body.host-mode { padding: 16px 24px; }
+  body.host-mode .wrap { max-width: 1760px; }
+  body.host-mode::before, body.host-mode::after {
+    content: ""; position: fixed; z-index: -1; border-radius: 50%; filter: blur(90px); pointer-events: none;
   }
-  .presenter-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
-    gap: 32px;
-    align-items: center;
-  }
-  @media (max-width: 880px) { .presenter-grid { grid-template-columns: 1fr; } }
+  body.host-mode::before { width: 42vmax; height: 42vmax; left: -14vmax; top: -12vmax; background: rgba(255,93,143,.22); }
+  body.host-mode::after { width: 46vmax; height: 46vmax; right: -16vmax; bottom: -18vmax; background: rgba(255,182,72,.16); }
 
-  .stage { display: flex; flex-direction: column; align-items: center; gap: 18px; }
-  .wheel-wrap { position: relative; width: min(420px, 82vw, 52vh); height: min(420px, 82vw, 52vh); }
+  .presenter {
+    --wheel: clamp(240px, calc(100vh - 292px - 5vh), 46vw);
+    --wheel: clamp(240px, calc(100dvh - 292px - 5dvh), 46vw);
+    min-height: calc(100vh - 32px);
+    min-height: calc(100dvh - 32px);
+    display: grid; grid-template-rows: auto auto 1fr; gap: 12px;
+  }
+
+  .brand { display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .brand h1 { margin: 0; font-size: clamp(2rem, 6vh, 3.6rem); line-height: 1; letter-spacing: .01em; font-weight: 700; }
+  .brand .t-grad {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .brand .t-emoji { font-size: clamp(2rem, 6vh, 3.6rem); line-height: 1; }
+
+  .round-card {
+    text-align: center; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+    min-height: 84px; padding: 12px 28px; width: 100%;
+    background: linear-gradient(135deg, rgba(255,93,143,.16), rgba(255,182,72,.12)), var(--panel);
+    border-color: rgba(255,182,72,.3);
+  }
+  .round-card .status { font-weight: 700; font-size: clamp(1.3rem, 3.2vh, 2rem); font-family: 'Fredoka', 'Work Sans', system-ui, sans-serif; }
+  .round-card .fact {
+    font-style: italic; color: var(--text-dim); font-size: clamp(.95rem, 2.2vh, 1.35rem); min-height: 1.3em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  .presenter-grid {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 28px; align-items: stretch; min-height: 0;
+  }
+  .side-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: clamp(14px, 3vh, 26px); padding: 24px;
+  }
+  .side-card .eyebrow { font-size: clamp(.85rem, 2vh, 1.15rem); margin: 0; color: var(--accent); }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: clamp(12px, 3vh, 28px); width: 100%; }
+  .step { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; text-align: left; }
+  .step .ico {
+    width: clamp(52px, 9vh, 78px); height: clamp(52px, 9vh, 78px);
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(1.7rem, 4.6vh, 2.7rem); border-radius: 20px;
+    background: rgba(255,255,255,.07); border: 1px solid var(--panel-line);
+  }
+  .step b { display: block; font-family: 'Fredoka', 'Work Sans', system-ui, sans-serif; font-size: clamp(1.05rem, 2.6vh, 1.5rem); font-weight: 600; }
+  .step span { color: var(--text-dim); font-size: clamp(.85rem, 2vh, 1.1rem); line-height: 1.35; }
+
+  .stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  .wheel-wrap { position: relative; width: var(--wheel); height: var(--wheel); margin: 20px; }
+  .bulbs { position: absolute; inset: 0; pointer-events: none; }
+  .bulb {
+    position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+    background: #ffd98a; box-shadow: 0 0 10px 3px rgba(255,182,72,.75);
+    transform: rotate(var(--a)) translateY(calc(var(--wheel) / -2 - 15px));
+    animation: twinkle 1.6s ease-in-out infinite;
+  }
+  .bulb:nth-child(even) { animation-delay: .8s; background: #ff9ec0; box-shadow: 0 0 10px 3px rgba(255,93,143,.7); }
+  @keyframes twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .bulb { animation: none; } }
+
   .pointer {
-    position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: -26px; left: 50%; transform: translateX(-50%);
     width: 0; height: 0;
-    border-left: 18px solid transparent; border-right: 18px solid transparent;
-    border-top: 30px solid var(--accent);
-    z-index: 5; filter: drop-shadow(0 2px 5px var(--shadow));
+    border-left: 24px solid transparent; border-right: 24px solid transparent;
+    border-top: 42px solid var(--accent);
+    z-index: 5; filter: drop-shadow(0 3px 6px var(--shadow));
   }
   canvas#wheel {
     width: 100%; height: 100%; border-radius: 50%; display: block;
-    box-shadow: 0 0 0 7px var(--panel-2), 0 0 42px rgba(255,182,72,.18), 0 20px 46px var(--shadow);
+    box-shadow: 0 0 0 clamp(6px, 1.2vh, 12px) var(--panel-2), 0 0 56px rgba(255,182,72,.28), 0 20px 46px var(--shadow);
     transition: transform 4.6s cubic-bezier(.17,.67,.12,.99);
   }
   .hub {
-    position: absolute; top: 50%; left: 50%; width: 50px; height: 50px;
+    position: absolute; top: 50%; left: 50%; width: 17%; height: 17%;
     transform: translate(-50%,-50%);
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    border-radius: 50%; box-shadow: 0 0 0 4px var(--bg-1), 0 4px 10px var(--shadow);
-    display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+    border-radius: 50%; box-shadow: 0 0 0 5px var(--bg-1), 0 4px 14px var(--shadow);
+    display: flex; align-items: center; justify-content: center; font-size: calc(var(--wheel) * .085);
   }
-  .stage-controls { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-
-  .round-card { text-align: center; min-height: 30px; width: 100%; max-width: 520px; }
-  .round-card .status { font-weight: 700; font-size: 1.15rem; }
-  .round-card .fact { font-style: italic; color: var(--text-dim); margin-top: 6px; font-size: 1.02rem; }
-
-  .qr-card { text-align: center; }
-  .qr-card .qr-box {
-    background: #fff; border-radius: 14px; padding: 14px; display: inline-block; margin-top: 8px;
+  .stage-controls { display: flex; gap: 16px; justify-content: center; }
+  .stage-controls button {
+    min-width: clamp(170px, 17vw, 260px); padding: 14px 20px; font-size: clamp(1rem, 2.4vh, 1.3rem);
   }
-  .qr-card .hint { font-size: .9rem; color: var(--text-dim); margin-top: 12px; }
+
+  .qr-box {
+    background: #fff; border-radius: 18px; padding: 14px; aspect-ratio: 1;
+    width: min(100%, calc(100dvh - 430px), 440px); min-width: 200px;
+    box-shadow: 0 0 0 6px rgba(255,255,255,.08), 0 0 44px rgba(255,182,72,.25);
+  }
+  .qr-box img, .qr-box canvas { width: 100% !important; height: 100% !important; display: block; }
+  .qr-url {
+    font-family: 'Space Mono', 'Courier New', monospace; font-size: clamp(.78rem, 1.8vh, 1rem);
+    color: var(--text-dim); overflow-wrap: anywhere;
+  }
+  .qr-hint { color: var(--text-dim); font-size: clamp(.9rem, 2vh, 1.15rem); }
+
+  @media (max-width: 1000px) {
+    .presenter { --wheel: min(86vw, 60vh); grid-template-rows: auto auto auto; }
+    .presenter-grid { grid-template-columns: 1fr; }
+    .stage { order: -1; }
+    .qr-box { width: min(100%, 320px); }
+  }
 
   .host-toggle {
-    position: fixed; left: 14px; bottom: 14px; z-index: 400;
+    position: fixed; left: 14px; top: 14px; z-index: 400;
     padding: 6px 12px; font-size: .78rem; font-weight: 600;
     background: rgba(255,255,255,.05); color: var(--text-faint);
     border: 1px solid var(--panel-line); box-shadow: none; opacity: .55;
@@ -369,30 +435,49 @@ function updateSpinButtons() {
 }
 
 function initHost() {
+  document.body.classList.add('host-mode');
   const app = document.getElementById('app');
   app.innerHTML = `
     <section class="presenter">
-      <div class="top"><h1>🎤 Crew Clues</h1></div>
+      <div class="brand">
+        <span class="t-emoji">🎤</span>
+        <h1><span class="t-grad">Crew Clues</span></h1>
+        <span class="t-emoji">🕵️</span>
+      </div>
+
+      <div class="panel round-card">
+        <div class="status" id="roundStatus">Ready when you are.</div>
+        <div class="fact" id="roundFact"></div>
+      </div>
+
       <div class="presenter-grid">
+        <div class="panel side-card">
+          <div class="eyebrow">How to play</div>
+          <ol class="steps">
+            <li class="step"><div class="ico">📱</div><div><b>Scan the code</b><span>Point your phone at the QR code. No login needed.</span></div></li>
+            <li class="step"><div class="ico">🕵️</div><div><b>Pick who it is</b><span>Tap the name you think the fun fact belongs to.</span></div></li>
+            <li class="step"><div class="ico">⚡</div><div><b>Be the fastest</b><span>First correct guess wins. Can't guess your own fact!</span></div></li>
+          </ol>
+        </div>
+
         <div class="stage">
           <div class="wheel-wrap">
+            <div class="bulbs" id="bulbs"></div>
             <div class="pointer"></div>
             <canvas id="wheel" width="600" height="600"></canvas>
             <div class="hub">🎉</div>
           </div>
           <div class="stage-controls">
-            <button id="spinBtn">Spin the Wheel</button>
-            <button id="nobodyBtn" class="ghost" disabled>Nobody Got It</button>
-          </div>
-          <div class="panel round-card">
-            <div class="status" id="roundStatus">Ready when you are.</div>
-            <div class="fact" id="roundFact"></div>
+            <button id="spinBtn">🎡 Spin the Wheel</button>
+            <button id="nobodyBtn" class="ghost" disabled>🤷 Nobody Got It</button>
           </div>
         </div>
-        <div class="panel qr-card">
-          <div class="eyebrow">Join the guessing</div>
+
+        <div class="panel side-card">
+          <div class="eyebrow">Scan to guess</div>
           <div id="qrBox" class="qr-box"></div>
-          <div class="hint">Scan with your phone, pick your name, and start guessing. No login needed.</div>
+          <div class="qr-hint">or go to</div>
+          <div class="qr-url" id="qrUrl"></div>
         </div>
       </div>
     </section>
@@ -429,6 +514,14 @@ function initHost() {
       </div>
     </section>
   `;
+
+  const bulbs = document.getElementById('bulbs');
+  for (let i = 0; i < 32; i++) {
+    const b = document.createElement('i');
+    b.className = 'bulb';
+    b.style.setProperty('--a', (i * 360 / 32) + 'deg');
+    bulbs.appendChild(b);
+  }
 
   hostAudio.hype = new Audio(AUDIO_URLS.hype); hostAudio.hype.volume = 0.6;
   hostAudio.drumroll = new Audio(AUDIO_URLS.drumroll); hostAudio.drumroll.volume = 0.9;
@@ -502,7 +595,8 @@ function buildQr() {
   const url = location.origin + location.pathname;
   const box = document.getElementById('qrBox');
   box.innerHTML = '';
-  new QRCode(box, { text: url, width: 210, height: 210, colorDark: '#180f33', colorLight: '#ffffff' });
+  new QRCode(box, { text: url, width: 440, height: 440, colorDark: '#180f33', colorLight: '#ffffff' });
+  document.getElementById('qrUrl').textContent = (location.host + location.pathname).replace(/index\.html$/, '');
 }
 
 function renderWeekCard() {
@@ -821,6 +915,7 @@ let guestRound = null;
 let myGuestName = localStorage.getItem('ffGuest.myName') || null;
 
 function initGuest() {
+  document.body.classList.remove('host-mode');
   renderGuest();
   refreshRound();
   trackChannel(sb.channel('guest-round').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_round' }, refreshRound).subscribe());
@@ -938,7 +1033,7 @@ function renderFactBanner() {
     <div class="guess-grid" id="guessGrid" style="margin-top:14px;"></div>
   `;
   const grid = document.getElementById('guessGrid');
-  guestRound.candidates.forEach(name => {
+  ALL_NAMES.forEach(name => {
     const btn = document.createElement('button');
     btn.className = 'guess-btn';
     btn.textContent = name;
