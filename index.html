@@ -175,9 +175,15 @@
     border-top: 42px solid var(--accent);
     z-index: 5; filter: drop-shadow(0 3px 6px var(--shadow));
   }
-  canvas#wheel {
-    width: 100%; height: 100%; border-radius: 50%; display: block;
+  /* The rim/glow sits on a fixed layer; only the clipped canvas inside it rotates, so its
+     corners can never poke past the page edge and flicker a scrollbar in and out mid-spin. */
+  .wheel-rim {
+    position: absolute; inset: 0; border-radius: 50%;
     box-shadow: 0 0 0 clamp(6px, 1.2vh, 12px) var(--panel-2), 0 0 56px rgba(255,182,72,.28), 0 20px 46px var(--shadow);
+  }
+  .wheel-clip { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; }
+  canvas#wheel {
+    width: 100%; height: 100%; display: block;
     transition: transform 4.6s cubic-bezier(.17,.67,.12,.99);
   }
   .hub {
@@ -561,6 +567,7 @@ function initHost() {
           <ol class="steps">
             <li class="step"><div class="ico">📱</div><div><b>Scan the code</b><span>Point your phone at the QR code. No login needed.</span></div></li>
             <li class="step"><div class="ico">🕵️</div><div><b>Pick who it is</b><span>Tap the name you think the fun fact belongs to.</span></div></li>
+            <li class="step"><div class="ico">🎁</div><div><b>Win a prize</b><span>If nobody guesses your fun fact, you stump everyone and win a prize.</span></div></li>
             <li class="step"><div class="ico">⚡</div><div><b>Be the fastest</b><span>The first correct guess gets the shout-out. Can't guess your own fact!</span></div></li>
           </ol>
         </div>
@@ -569,7 +576,8 @@ function initHost() {
           <div class="wheel-wrap">
             <div class="bulbs" id="bulbs"></div>
             <div class="pointer"></div>
-            <canvas id="wheel" width="600" height="600"></canvas>
+            <div class="wheel-rim"></div>
+            <div class="wheel-clip"><canvas id="wheel" width="600" height="600"></canvas></div>
             <div class="hub">🎉</div>
           </div>
           <div class="stage-controls">
