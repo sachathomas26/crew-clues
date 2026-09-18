@@ -18,10 +18,7 @@
     --accent: #ffb648;
     --accent-ink: #2a1604;
     --accent-2: #ff5d8f;
-    --accent-2-ink: #2b0414;
     --good: #2fe0ac;
-    --good-ink: #012e22;
-    --mystery: #0d0a20;
     --shadow: rgba(6,3,20,0.55);
   }
   * { box-sizing: border-box; }
@@ -29,14 +26,14 @@
   body {
     min-height: 100vh;
     background: radial-gradient(circle at 50% 10%, var(--bg-2), var(--bg-1) 62%);
+    background-attachment: fixed;
     color: var(--text);
     font-family: 'Work Sans', system-ui, sans-serif;
-    padding: 28px 20px 60px;
+    padding: 24px 20px 60px;
   }
   h1, h2, h3, .display { font-family: 'Fredoka', 'Work Sans', system-ui, sans-serif; text-wrap: balance; }
   .tnum { font-family: 'Space Mono', 'Courier New', monospace; font-variant-numeric: tabular-nums; }
   .wrap { max-width: 1180px; margin: 0 auto; }
-  a { color: inherit; }
   button {
     font-family: inherit;
     font-weight: 700;
@@ -53,6 +50,7 @@
   button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 26px var(--shadow); }
   button:active:not(:disabled) { transform: translateY(0); }
   button:disabled { opacity: .4; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   button.ghost {
     background: rgba(255,255,255,.08);
     color: var(--text);
@@ -80,7 +78,7 @@
     color: var(--text-faint);
     margin: 0 0 6px;
   }
-  .top { text-align: center; margin-bottom: 26px; }
+  .top { text-align: center; margin-bottom: 22px; }
   .top h1 { font-size: clamp(1.7rem, 4vw, 2.4rem); margin: 0 0 6px; font-weight: 700; }
   .top p { color: var(--text-dim); max-width: 620px; margin: 0 auto; font-size: .98rem; }
   .role-switch {
@@ -100,16 +98,22 @@
   }
   .host-login-form button { padding: 9px 18px; font-size: .88rem; }
 
-  .host-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
-    gap: 22px;
-    align-items: start;
+  /* ---------- host: the screen-share part ---------- */
+  .presenter {
+    min-height: calc(100vh - 84px);
+    min-height: calc(100dvh - 84px);
+    display: flex; flex-direction: column; justify-content: center;
   }
-  @media (max-width: 880px) { .host-grid { grid-template-columns: 1fr; } }
+  .presenter-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
+    gap: 32px;
+    align-items: center;
+  }
+  @media (max-width: 880px) { .presenter-grid { grid-template-columns: 1fr; } }
 
   .stage { display: flex; flex-direction: column; align-items: center; gap: 18px; }
-  .wheel-wrap { position: relative; width: min(420px, 82vw); height: min(420px, 82vw); }
+  .wheel-wrap { position: relative; width: min(420px, 82vw, 52vh); height: min(420px, 82vw, 52vh); }
   .pointer {
     position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
     width: 0; height: 0;
@@ -131,21 +135,34 @@
   }
   .stage-controls { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
 
-  .round-card { text-align: center; min-height: 30px; }
+  .round-card { text-align: center; min-height: 30px; width: 100%; max-width: 520px; }
   .round-card .status { font-weight: 700; font-size: 1.15rem; }
   .round-card .fact { font-style: italic; color: var(--text-dim); margin-top: 6px; font-size: 1.02rem; }
-  .round-card .private-note {
-    margin-top: 12px; font-size: .88rem; color: var(--accent);
-    background: rgba(255,182,72,.1); border: 1px dashed rgba(255,182,72,.4);
-    border-radius: 10px; padding: 8px 12px; display: inline-block;
-  }
 
-  .side-stack { display: flex; flex-direction: column; gap: 18px; }
   .qr-card { text-align: center; }
   .qr-card .qr-box {
     background: #fff; border-radius: 14px; padding: 14px; display: inline-block; margin-top: 8px;
   }
-  .qr-card .hint { font-size: .85rem; color: var(--text-dim); margin-top: 10px; }
+  .qr-card .hint { font-size: .9rem; color: var(--text-dim); margin-top: 12px; }
+
+  .host-toggle {
+    position: fixed; left: 14px; bottom: 14px; z-index: 400;
+    padding: 6px 12px; font-size: .78rem; font-weight: 600;
+    background: rgba(255,255,255,.05); color: var(--text-faint);
+    border: 1px solid var(--panel-line); box-shadow: none; opacity: .55;
+  }
+  .host-toggle:hover:not(:disabled), .host-toggle:focus-visible { opacity: 1; color: var(--text); transform: none; box-shadow: none; }
+  [hidden] { display: none !important; }
+
+  /* ---------- host: below the fold ---------- */
+  .admin { margin-top: 36px; padding-top: 28px; border-top: 1px dashed var(--panel-line); }
+  .admin h2 { margin: 0 0 4px; font-size: 1.5rem; }
+  .admin .admin-note { color: var(--text-dim); font-size: .9rem; margin-bottom: 20px; }
+  .admin-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; align-items: start;
+  }
+  .admin-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .admin-actions button { padding: 10px 18px; font-size: .92rem; }
 
   .week-card .bar {
     height: 10px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 10px;
@@ -161,9 +178,10 @@
   .board-row .rank { width: 1.4em; color: var(--text-faint); font-weight: 700; }
   .board-row .who { flex: 1; font-weight: 600; }
   .board-row .score { color: var(--accent); font-weight: 700; }
-  .board-row .prize { font-size: .82rem; color: var(--good); }
+  .board-row .prize { font-size: .82rem; color: var(--good); font-weight: 600; }
   .board-empty { color: var(--text-faint); font-size: .9rem; margin-top: 8px; }
 
+  /* ---------- guest ---------- */
   .guest-wrap { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
   .identity-row { display: flex; gap: 10px; align-items: center; }
   .identity-row select {
@@ -185,7 +203,6 @@
     box-shadow: none;
   }
   .guess-btn:hover:not(:disabled) { border-color: var(--accent-2); transform: translateY(-2px); }
-  .guess-btn:disabled { opacity: .35; }
 
   .reveal { text-align: center; padding: 10px 0; }
   .reveal .name {
@@ -220,8 +237,6 @@
   }
   .fact-row input::placeholder { color: var(--text-faint); }
   .edit-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 16px; }
-  #editSaveBtn, #editCancelBtn { font-size: .95rem; padding: 10px 22px; }
-  #editCancelBtn { background: rgba(255,255,255,0.12); color: white; border: 2px solid rgba(255,255,255,0.4); }
 
   .toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -233,6 +248,7 @@
 
   .confetti { position: fixed; top: -10px; width: 9px; height: 9px; z-index: 999; pointer-events: none; border-radius: 2px; }
   @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .confetti { display: none; } button { transition: none; } }
 
   .loading-note { text-align: center; color: var(--text-dim); padding: 60px 20px; }
 </style>
@@ -313,13 +329,17 @@ async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   isHost = !!session;
 
+  // Deferred with setTimeout: supabase-js holds an auth lock while this callback runs, so
+  // starting new queries synchronously in here can deadlock.
   sb.auth.onAuthStateChange((_event, session) => {
     const nowHost = !!session;
     if (nowHost === isHost) return;
-    clearChannels();
-    if (typeof unsubGuesses === 'function') { unsubGuesses(); unsubGuesses = null; }
-    isHost = nowHost;
-    if (isHost) initHost(); else initGuest();
+    setTimeout(() => {
+      clearChannels();
+      if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
+      isHost = nowHost;
+      if (isHost) initHost(); else initGuest();
+    }, 0);
   });
 
   if (isHost) initHost(); else initGuest();
@@ -328,6 +348,8 @@ boot();
 
 /* =====================================================================
    HOST VIEW
+   Top screen = wheel + QR only (this is what gets screen-shared).
+   Everything that could spoil an answer lives below the fold.
    ===================================================================== */
 let hostSpinning = false;
 let hostCurrentRotation = 0;
@@ -337,40 +359,57 @@ let unsubGuesses = null;
 let latestWeekStatus = { remaining: [], solved: [] };
 let hostAudio = {};
 
+function roundIsOpen() { return !!(currentRound && !currentRound.resolved); }
+
+function updateSpinButtons() {
+  const spinBtn = document.getElementById('spinBtn');
+  const nobodyBtn = document.getElementById('nobodyBtn');
+  if (spinBtn) spinBtn.disabled = hostSpinning || roundIsOpen() || latestWeekStatus.remaining.length === 0;
+  if (nobodyBtn) nobodyBtn.disabled = !roundIsOpen();
+}
+
 function initHost() {
   const app = document.getElementById('app');
   app.innerHTML = `
-    <div class="top">
-      <h1>🎤 Fun Fact Face-Off</h1>
-      <p>Spin for a mystery fun fact, let the room scan in and guess, and see who knows the team best.</p>
-      <button class="role-switch" id="toGuestBtn">Log out of host view</button>
-    </div>
-    <div class="host-grid">
-      <div class="stage">
-        <div class="wheel-wrap">
-          <div class="pointer"></div>
-          <canvas id="wheel" width="600" height="600"></canvas>
-          <div class="hub">🎉</div>
+    <section class="presenter">
+      <div class="top"><h1>🎤 Fun Fact Face-Off</h1></div>
+      <div class="presenter-grid">
+        <div class="stage">
+          <div class="wheel-wrap">
+            <div class="pointer"></div>
+            <canvas id="wheel" width="600" height="600"></canvas>
+            <div class="hub">🎉</div>
+          </div>
+          <div class="stage-controls">
+            <button id="spinBtn">Spin the Wheel</button>
+            <button id="nobodyBtn" class="ghost" disabled>Nobody Got It</button>
+          </div>
+          <div class="panel round-card">
+            <div class="status" id="roundStatus">Ready when you are.</div>
+            <div class="fact" id="roundFact"></div>
+          </div>
         </div>
-        <div class="stage-controls">
-          <button id="spinBtn">Spin the Wheel</button>
-          <button id="nobodyBtn" class="ghost" disabled>Nobody Got It</button>
-        </div>
-        <div class="panel round-card" id="roundCard">
-          <div class="status" id="roundStatus">Add fun facts, then shuffle this week's mix to begin.</div>
-          <div class="fact" id="roundFact"></div>
-        </div>
-        <div class="stage-controls">
-          <button id="shuffleBtn" class="ghost">🔀 Shuffle This Week's Facts</button>
-          <button id="editFactsBtn" class="ghost">✏️ Edit Fun Facts</button>
-          <button id="resetScoreBtn" class="danger-ghost">Reset Scoreboard</button>
-        </div>
-      </div>
-      <div class="side-stack">
         <div class="panel qr-card">
           <div class="eyebrow">Join the guessing</div>
           <div id="qrBox" class="qr-box"></div>
           <div class="hint">Scan with your phone, pick your name, and start guessing. No login needed.</div>
+        </div>
+      </div>
+    </section>
+
+    <button class="host-toggle" id="hostToggle" aria-expanded="false" aria-controls="adminPanel">Show host controls</button>
+
+    <section class="admin" id="adminPanel" hidden>
+      <h2>Host controls</h2>
+      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen.</div>
+      <div class="admin-grid">
+        <div class="panel">
+          <div class="eyebrow">🎁 Stumped the room · a prize each time</div>
+          <ul class="board-list" id="stumpList"></ul>
+        </div>
+        <div class="panel">
+          <div class="eyebrow">🏆 Correct guesses · a prize every 3rd</div>
+          <ul class="board-list" id="guesserList"></ul>
         </div>
         <div class="panel week-card">
           <div class="eyebrow">This week</div>
@@ -379,11 +418,16 @@ function initHost() {
           <div class="counts"><span id="weekSolved">0 solved</span><span id="weekRemaining">0 left</span></div>
         </div>
         <div class="panel">
-          <div class="eyebrow">🏆 Leaderboard</div>
-          <ul class="board-list" id="leaderboard"></ul>
+          <div class="eyebrow">Setup</div>
+          <div class="admin-actions">
+            <button id="editFactsBtn" class="ghost">✏️ Edit Fun Facts</button>
+            <button id="shuffleBtn" class="ghost">🔀 Shuffle This Week's Facts</button>
+            <button id="resetScoreBtn" class="danger-ghost">Reset Winners</button>
+            <button id="logoutBtn" class="ghost">Log out</button>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   `;
 
   hostAudio.hype = new Audio(AUDIO_URLS.hype); hostAudio.hype.volume = 0.6;
@@ -392,17 +436,47 @@ function initHost() {
 
   buildQr();
 
-  document.getElementById('toGuestBtn').addEventListener('click', hostLogout);
+  const adminPanel = document.getElementById('adminPanel');
+  const hostToggle = document.getElementById('hostToggle');
+  hostToggle.addEventListener('click', () => {
+    const show = adminPanel.hidden;
+    adminPanel.hidden = !show;
+    hostToggle.textContent = show ? 'Hide host controls' : 'Show host controls';
+    hostToggle.setAttribute('aria-expanded', String(show));
+    if (show) adminPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', hostLogout);
   document.getElementById('spinBtn').addEventListener('click', spinHost);
   document.getElementById('nobodyBtn').addEventListener('click', () => resolveRound(false, null));
   document.getElementById('shuffleBtn').addEventListener('click', shuffleWeek);
   document.getElementById('editFactsBtn').addEventListener('click', openEditFacts);
-  document.getElementById('resetScoreBtn').addEventListener('click', resetScoreboard);
+  document.getElementById('resetScoreBtn').addEventListener('click', resetWinners);
 
   refreshWeekStatus();
-  refreshLeaderboard();
+  refreshWinners();
+  restoreOpenRound();
   trackChannel(sb.channel('host-week').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_week_status' }, refreshWeekStatus).subscribe());
-  trackChannel(sb.channel('host-score').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_scoreboard' }, refreshLeaderboard).subscribe());
+  trackChannel(sb.channel('host-winners')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_scoreboard' }, refreshWinners)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_unguessed_prizes' }, refreshWinners)
+    .subscribe());
+}
+
+// If the host reloads mid-round, pick the open round back up instead of leaving it stuck.
+async function restoreOpenRound() {
+  const [{ data: pub }, { data: sec }] = await Promise.all([
+    sb.from('ff_round').select('*').eq('id', true).maybeSingle(),
+    sb.from('ff_round_secret').select('*').eq('id', true).maybeSingle(),
+  ]);
+  if (pub && pub.status === 'open' && sec && sec.round_id && sec.round_id === pub.round_id) {
+    currentRound = { roundId: pub.round_id, activePerson: sec.active_person, factText: sec.fact_text, resolved: false };
+    document.getElementById('roundStatus').textContent = "🕵️ Guessing is open!";
+    document.getElementById('roundFact').textContent = `"${sec.fact_text}"`;
+    updateSpinButtons();
+    watchGuessesForRound(pub.round_id);
+  }
 }
 
 async function refreshWeekStatus() {
@@ -410,49 +484,66 @@ async function refreshWeekStatus() {
   latestWeekStatus = data ? { remaining: data.remaining || [], solved: data.solved || [] } : { remaining: [], solved: [] };
   drawWheel(latestWeekStatus.remaining);
   renderWeekCard();
-  const spinBtn = document.getElementById('spinBtn');
-  if (spinBtn) spinBtn.disabled = hostSpinning || latestWeekStatus.remaining.length === 0;
+  updateSpinButtons();
 }
 
-async function refreshLeaderboard() {
-  const { data } = await sb.from('ff_scoreboard').select('*');
-  renderLeaderboard((data || []).map(r => ({ name: r.name, correctGuesses: r.correct_guesses, prizesWon: r.prizes_won })));
+async function refreshWinners() {
+  const [{ data: stumps }, { data: guessers }] = await Promise.all([
+    sb.from('ff_unguessed_prizes').select('*'),
+    sb.from('ff_scoreboard').select('*'),
+  ]);
+  renderWinners(
+    (stumps || []).filter(r => r.count > 0).map(r => ({ name: r.name, count: r.count })),
+    (guessers || []).filter(r => r.correct_guesses > 0).map(r => ({ name: r.name, correctGuesses: r.correct_guesses, prizesWon: r.prizes_won }))
+  );
 }
 
 function buildQr() {
   const url = location.origin + location.pathname;
-  document.getElementById('qrBox').innerHTML = '';
-  new QRCode(document.getElementById('qrBox'), { text: url, width: 170, height: 170, colorDark: '#180f33', colorLight: '#ffffff' });
+  const box = document.getElementById('qrBox');
+  box.innerHTML = '';
+  new QRCode(box, { text: url, width: 210, height: 210, colorDark: '#180f33', colorLight: '#ffffff' });
 }
 
 function renderWeekCard() {
   const remaining = latestWeekStatus.remaining;
   const solved = latestWeekStatus.solved;
   const total = remaining.length + solved.length;
-  document.getElementById('weekLine').textContent = total === 0
-    ? "No facts loaded yet — add facts and shuffle to start a week."
+  const line = document.getElementById('weekLine');
+  if (!line) return;
+  line.textContent = total === 0
+    ? "No facts loaded yet — add facts, then shuffle to start a week."
     : `${total} fun facts in play this week`;
   document.getElementById('weekBar').style.width = total === 0 ? '0%' : `${Math.round((solved.length / total) * 100)}%`;
   document.getElementById('weekSolved').textContent = `${solved.length} solved`;
   document.getElementById('weekRemaining').textContent = `${remaining.length} left`;
 }
 
-function renderLeaderboard(rows) {
-  const list = document.getElementById('leaderboard');
-  if (!list) return;
-  rows.sort((a, b) => (b.correctGuesses || 0) - (a.correctGuesses || 0));
-  if (rows.length === 0 || rows.every(r => !r.correctGuesses)) {
-    list.innerHTML = `<div class="board-empty">No correct guesses yet — first one's up for grabs!</div>`;
-    return;
-  }
-  list.innerHTML = rows.filter(r => r.correctGuesses).slice(0, 8).map((r, i) => `
-    <li class="board-row">
-      <span class="rank">${i + 1}</span>
-      <span class="who">${esc(r.name)}</span>
-      <span class="score tnum">${r.correctGuesses}</span>
-      ${r.prizesWon ? `<span class="prize">🎁×${r.prizesWon}</span>` : ''}
-    </li>
-  `).join('');
+function renderWinners(stumpRows, guesserRows) {
+  const stumpEl = document.getElementById('stumpList');
+  const guesserEl = document.getElementById('guesserList');
+  if (!stumpEl || !guesserEl) return;
+
+  stumpRows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  stumpEl.innerHTML = stumpRows.length
+    ? stumpRows.map((r, i) => `
+        <li class="board-row">
+          <span class="rank">${i + 1}</span>
+          <span class="who">${esc(r.name)}</span>
+          <span class="prize">🎁 × ${r.count}</span>
+        </li>`).join('')
+    : `<div class="board-empty">Nobody has stumped the room yet.</div>`;
+
+  guesserRows.sort((a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name));
+  guesserEl.innerHTML = guesserRows.length
+    ? guesserRows.map((r, i) => `
+        <li class="board-row">
+          <span class="rank">${i + 1}</span>
+          <span class="who">${esc(r.name)}</span>
+          <span class="score tnum">${r.correctGuesses}</span>
+          ${r.prizesWon ? `<span class="prize">🎁 × ${r.prizesWon}</span>` : ''}
+        </li>`).join('')
+    : `<div class="board-empty">No correct guesses yet.</div>`;
 }
 
 function drawWheel(names) {
@@ -510,9 +601,9 @@ function playRandomStinger() {
 
 async function spinHost() {
   const remaining = latestWeekStatus.remaining;
-  if (hostSpinning || remaining.length === 0) return;
+  if (hostSpinning || roundIsOpen() || remaining.length === 0) return;
   hostSpinning = true;
-  document.getElementById('spinBtn').disabled = true;
+  updateSpinButtons();
   document.getElementById('roundStatus').textContent = "Building the hype…";
   document.getElementById('roundFact').textContent = '';
 
@@ -539,7 +630,13 @@ async function spinHost() {
     canvas.style.transform = `rotate(${hostCurrentRotation}deg)`;
 
     setTimeout(async () => {
-      const { data: mixRow } = await sb.from('ff_week_mix').select('mapping').eq('id', true).single();
+      const { data: mixRow, error } = await sb.from('ff_week_mix').select('mapping').eq('id', true).single();
+      if (error || !mixRow) {
+        toast("Couldn't load this week's facts — try logging in again.");
+        hostSpinning = false;
+        updateSpinButtons();
+        return;
+      }
       const factText = (mixRow.mapping || {})[winnerName] || '(missing fact text)';
       const roundId = 'r' + Date.now();
       currentRound = { roundId, activePerson: winnerName, factText, resolved: false };
@@ -549,10 +646,10 @@ async function spinHost() {
 
       document.getElementById('roundStatus').textContent = "🕵️ Guessing is open!";
       document.getElementById('roundFact').textContent = `"${factText}"`;
-      document.getElementById('nobodyBtn').disabled = false;
 
-      watchGuessesForRound(roundId);
       hostSpinning = false;
+      updateSpinButtons();
+      watchGuessesForRound(roundId);
     }, 4700);
   }, 18000);
 }
@@ -571,6 +668,7 @@ async function checkGuesses(roundId) {
   const { data } = await sb.from('ff_guesses').select('*').eq('round_id', roundId);
   let best = null;
   (data || []).forEach(g => {
+    // The person whose fact it is can't win their own round, however they guess.
     if (g.guesser === currentRound.activePerson || g.guess !== currentRound.activePerson) return;
     if (!best || g.ts < best.ts) best = g;
   });
@@ -581,30 +679,34 @@ async function resolveRound(solved, winnerGuesser) {
   if (!currentRound || currentRound.resolved) return;
   currentRound.resolved = true;
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
-  document.getElementById('nobodyBtn').disabled = true;
+  updateSpinButtons();
 
   const { data: ws } = await sb.from('ff_week_status').select('*').eq('id', true).single();
   let remaining = ws.remaining || [], solvedList = ws.solved || [];
+  const round = currentRound;
 
   if (solved) {
-    remaining = remaining.filter(n => n !== currentRound.activePerson);
-    solvedList = [...solvedList, currentRound.activePerson];
-    await sb.from('ff_round').update({ status: 'solved', winner: winnerGuesser, solved_identity: currentRound.activePerson }).eq('id', true);
+    remaining = remaining.filter(n => n !== round.activePerson);
+    solvedList = [...solvedList, round.activePerson];
+    await sb.from('ff_round').update({ status: 'solved', winner: winnerGuesser, solved_identity: round.activePerson }).eq('id', true);
     await bumpScoreboard(winnerGuesser);
-    document.getElementById('roundStatus').textContent = `🎉 It was ${currentRound.activePerson}! ${winnerGuesser} got it!`;
-    document.getElementById('roundFact').textContent = `"${currentRound.factText}"`;
+    document.getElementById('roundStatus').textContent = `🎉 It was ${round.activePerson}! ${winnerGuesser} got it!`;
+    document.getElementById('roundFact').textContent = `"${round.factText}"`;
     launchConfetti();
   } else {
+    // Stumped the room: the owner earns a prize, recorded below the fold only. The name is
+    // never put on this (shared) screen and the fact stays in the pool.
     await sb.from('ff_round').update({ status: 'closed_unsolved' }).eq('id', true);
-    const count = await bumpUnguessed(currentRound.activePerson);
-    document.getElementById('roundStatus').innerHTML = `😮 Nobody got it — stays in the mystery pile!`;
-    document.getElementById('roundFact').innerHTML = `<span class="private-note">Host only: that was ${currentRound.activePerson} — arrange their prize privately! (${count} unguessed win${count > 1 ? 's' : ''})</span>`;
+    await bumpUnguessed(round.activePerson);
+    document.getElementById('roundStatus').textContent = "😮 Nobody got it — that fun fact stays in the mystery pile!";
+    document.getElementById('roundFact').textContent = '';
   }
 
   await sb.from('ff_week_status').update({ remaining, solved: solvedList }).eq('id', true);
-  await sb.from('ff_guesses').delete().eq('round_id', currentRound.roundId);
+  await sb.from('ff_guesses').delete().eq('round_id', round.roundId);
 
   currentRound = null;
+  await Promise.all([refreshWeekStatus(), refreshWinners()]);
 }
 
 async function bumpScoreboard(name) {
@@ -623,6 +725,8 @@ async function bumpUnguessed(name) {
 }
 
 async function shuffleWeek() {
+  if (roundIsOpen() && !confirm("A round is still open. Shuffling will cancel it. Continue?")) return;
+
   const { data: factsRows } = await sb.from('ff_facts').select('*');
   const bank = {};
   (factsRows || []).forEach(r => { bank[r.name] = [r.fact1, r.fact2, r.fact3]; });
@@ -637,23 +741,27 @@ async function shuffleWeek() {
   });
   if (!remaining.length) { toast("Add some fun facts first!"); return; }
 
+  if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
+  currentRound = null;
+
   await sb.from('ff_week_mix').update({ mapping, generated_at: new Date().toISOString() }).eq('id', true);
   await sb.from('ff_week_status').update({ remaining, solved: [], generated_at: new Date().toISOString() }).eq('id', true);
   await sb.from('ff_round').update({ status: 'idle', round_id: null, fact_text: null, candidates: [], winner: null, solved_identity: null }).eq('id', true);
 
   document.getElementById('roundStatus').textContent = "This week's mix is ready — spin when you are!";
   document.getElementById('roundFact').textContent = '';
-  document.getElementById('nobodyBtn').disabled = true;
+  updateSpinButtons();
   toast(`Shuffled ${remaining.length} fun facts for this week.`);
 }
 
-async function resetScoreboard() {
-  if (!confirm("Reset the whole leaderboard? This can't be undone.")) return;
+async function resetWinners() {
+  if (!confirm("Clear all winners and prize counts? This can't be undone.")) return;
   const { data } = await sb.from('ff_scoreboard').select('name');
   if (data && data.length) await sb.from('ff_scoreboard').delete().in('name', data.map(r => r.name));
   const { data: up } = await sb.from('ff_unguessed_prizes').select('name');
   if (up && up.length) await sb.from('ff_unguessed_prizes').delete().in('name', up.map(r => r.name));
-  toast("Scoreboard reset.");
+  await refreshWinners();
+  toast("Winners cleared.");
 }
 
 async function openEditFacts() {
@@ -666,7 +774,7 @@ async function openEditFacts() {
   overlay.innerHTML = `
     <div class="edit-card">
       <h2>Fun facts</h2>
-      <div class="hint">Everyone submits up to three. It's fine to leave some blank until you collect them — each week's mix picks one at random per person.</div>
+      <div class="hint">Everyone submits up to three. It's fine to leave some blank until you collect them — each week's mix picks one at random per person. Don't open this while sharing your screen.</div>
       <div class="edit-scroll" id="factRows"></div>
       <div class="edit-actions">
         <button class="ghost" id="factCancel">Cancel</button>
@@ -678,7 +786,7 @@ async function openEditFacts() {
   requestAnimationFrame(() => overlay.classList.add('show'));
 
   const rowsEl = document.getElementById('factRows');
-  ALL_NAMES.forEach((name, i) => {
+  ALL_NAMES.forEach((name) => {
     const facts = bank[name] || ['', '', ''];
     const row = document.createElement('div');
     row.className = 'fact-row';
@@ -699,25 +807,23 @@ async function openEditFacts() {
       const vals = Array.from(inputs).map(inp => inp.value.trim());
       return { name, fact1: vals[0] || '', fact2: vals[1] || '', fact3: vals[2] || '' };
     });
-    await sb.from('ff_facts').upsert(upserts);
+    const { error } = await sb.from('ff_facts').upsert(upserts);
+    if (error) { toast("Couldn't save — try logging in again."); return; }
     toast("Fun facts saved.");
     close();
   });
 }
 
 /* =====================================================================
-   GUEST VIEW
+   GUEST VIEW — guess only. No leaderboard, nothing that hints at answers.
    ===================================================================== */
 let guestRound = null;
 let myGuestName = localStorage.getItem('ffGuest.myName') || null;
-let latestScoreRows = [];
 
 function initGuest() {
   renderGuest();
   refreshRound();
-  refreshGuestBoard();
   trackChannel(sb.channel('guest-round').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_round' }, refreshRound).subscribe());
-  trackChannel(sb.channel('guest-score').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_scoreboard' }, refreshGuestBoard).subscribe());
 }
 
 async function refreshRound() {
@@ -729,12 +835,6 @@ async function refreshRound() {
   renderFactBanner();
 }
 
-async function refreshGuestBoard() {
-  const { data } = await sb.from('ff_scoreboard').select('*');
-  latestScoreRows = (data || []).map(r => ({ name: r.name, correctGuesses: r.correct_guesses, prizesWon: r.prizes_won }));
-  renderGuestBoard(latestScoreRows);
-}
-
 function renderGuest() {
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -743,22 +843,17 @@ function renderGuest() {
       <p>Guess whose fun fact just came up. First correct guess scores the point!</p>
       <button class="role-switch" id="showHostLoginBtn">Hosting this round? Log in</button>
       <div class="host-login-form" id="hostLoginForm">
-        <input type="password" id="passcodeInput" placeholder="Host passcode">
+        <input type="password" id="passcodeInput" placeholder="Host passcode" autocomplete="current-password">
         <button id="passcodeSubmit">Go</button>
       </div>
     </div>
     <div class="guest-wrap">
       <div class="panel" id="identityPanel"></div>
       <div class="panel fact-banner" id="factBanner"></div>
-      <div class="panel">
-        <div class="eyebrow">🏆 Leaderboard</div>
-        <ul class="board-list" id="guestLeaderboard"></ul>
-      </div>
     </div>
   `;
   renderIdentity();
   renderFactBanner();
-  renderGuestBoard(latestScoreRows);
 
   document.getElementById('showHostLoginBtn').addEventListener('click', () => {
     document.getElementById('hostLoginForm').classList.toggle('show');
@@ -783,7 +878,7 @@ function renderIdentity() {
     el.innerHTML = `
       <div class="eyebrow">Who are you?</div>
       <div class="identity-row">
-        <select id="idSelect">
+        <select id="idSelect" aria-label="Your name">
           <option value="">Pick your name…</option>
           ${ALL_NAMES.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
         </select>
@@ -858,26 +953,13 @@ async function submitGuess(guessName) {
   if (localStorage.getItem('ffGuest.guessed.' + roundId)) return;
   localStorage.setItem('ffGuest.guessed.' + roundId, guessName);
   renderFactBanner();
-  const { error } = await sb.from('ff_guesses').upsert({ round_id: roundId, guesser: myGuestName, guess: guessName, ts: new Date().toISOString() });
-  if (error) toast("Couldn't send your guess — try again.");
-}
-
-function renderGuestBoard(rows) {
-  const list = document.getElementById('guestLeaderboard');
-  if (!list) return;
-  rows.sort((a, b) => (b.correctGuesses || 0) - (a.correctGuesses || 0));
-  if (rows.length === 0 || rows.every(r => !r.correctGuesses)) {
-    list.innerHTML = `<div class="board-empty">No correct guesses yet — first one's up for grabs!</div>`;
-    return;
+  const { error } = await sb.from('ff_guesses').insert({ round_id: roundId, guesser: myGuestName, guess: guessName, ts: new Date().toISOString() });
+  // 23505 = this person already has a guess in for this round; that one stands.
+  if (error && error.code !== '23505') {
+    localStorage.removeItem('ffGuest.guessed.' + roundId);
+    renderFactBanner();
+    toast("Couldn't send your guess — try again.");
   }
-  list.innerHTML = rows.filter(r => r.correctGuesses).slice(0, 8).map((r, i) => `
-    <li class="board-row">
-      <span class="rank">${i + 1}</span>
-      <span class="who">${esc(r.name)}</span>
-      <span class="score tnum">${r.correctGuesses}</span>
-      ${r.prizesWon ? `<span class="prize">🎁×${r.prizesWon}</span>` : ''}
-    </li>
-  `).join('');
 }
 </script>
 </body>
