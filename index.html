@@ -574,6 +574,42 @@ function afterRound(w, done) {
   return w;
 }
 
+// Bring the running wheel in line with the fun-fact list WITHOUT bringing played facts back:
+// new facts join the wheel (or reserve); deleted or reworded facts leave it. Returns true if anything changed.
+function syncWeekWithBank(w, bank) {
+  const key = (n, f) => n + '\u0001' + f;
+  const clean = name => [...new Set((bank[name] || []).map(f => String(f || '').trim()).filter(Boolean))];
+  const inBank = new Set();
+  ALL_NAMES.forEach(name => clean(name).forEach(f => inBank.add(key(name, f))));
+
+  const before = w.slots.length + w.pool.length;
+  w.slots = w.slots.filter(x => inBank.has(key(x.name, x.fact)));
+  w.pool = w.pool.filter(x => inBank.has(key(x.name, x.fact)));
+  let changed = w.slots.length + w.pool.length !== before;
+
+  const have = new Set([...w.slots, ...w.pool, ...w.used].map(x => key(x.name, x.fact)));
+  const fresh = [];
+  ALL_NAMES.forEach(name => clean(name).forEach(f => { if (!have.has(key(name, f))) fresh.push({ name, fact: f }); }));
+  shuffle(fresh);
+  // people with nothing on the wheel go first, so everyone with a fun fact gets a spot
+  fresh.sort((a, b) => (w.slots.some(s => s.name === a.name) ? 1 : 0) - (w.slots.some(s => s.name === b.name) ? 1 : 0));
+  fresh.forEach(item => {
+    changed = true;
+    if (w.slots.length < WHEEL_SLOTS) { w.slots.push(item); return; }
+    if (!w.slots.some(s => s.name === item.name)) {
+      // wheel is full: bump a spot from someone who has 2+ on it so this person still gets one
+      const counts = {};
+      w.slots.forEach(s => { counts[s.name] = (counts[s.name] || 0) + 1; });
+      const i = w.slots.findIndex(s => counts[s.name] > 1);
+      if (i >= 0) { w.pool.push(w.slots[i]); w.slots[i] = item; return; }
+    }
+    w.pool.push(item);
+  });
+  while (w.slots.length < WHEEL_SLOTS && w.pool.length) w.slots.push(w.pool.splice(Math.floor(Math.random() * w.pool.length), 1)[0]);
+  if (changed) shuffle(w.slots);
+  return changed;
+}
+
 async function saveWeek(w) {
   await sb.from('ff_week_mix').update({
     mapping: { v: 2, slots: w.slots, pool: w.pool, used: w.used },
@@ -839,7 +875,7 @@ function initHost() {
           <div class="eyebrow">👥 Who's joined</div>
           <div class="roster-count" id="rosterCount">0 of 0 ready</div>
           <div class="chips" id="rosterChips"></div>
-          <div class="board-empty">Green = joined on a phone. Tap a green name to reset it (wrong pick, new phone). Names stay claimed from week to week, so people don't need to pick again on Mondays.</div>
+          <div class="board-empty">Green = joined on a phone. Tap a green name to reset it (wrong pick, new phone). Names stay claimed between meetings, so people don't need to pick again.</div>
           <div class="admin-actions">
             <button id="manageNamesBtn" class="ghost">👤 Add / rename people</button>
             <button id="rosterClearBtn" class="danger-ghost">Reset all names</button>
@@ -854,19 +890,19 @@ function initHost() {
           <ul class="board-list" id="guesserList"></ul>
         </div>
         <div class="panel week-card">
-          <div class="eyebrow">This week</div>
+          <div class="eyebrow">The wheel</div>
           <div id="weekLine">No facts loaded yet</div>
           <div class="bar"><div class="bar-fill" id="weekBar" style="width:0%"></div></div>
           <div class="counts"><span id="weekSolved">0 played</span><span id="weekRemaining">0 left</span></div>
           <div class="board-empty" id="lastRoundLine"></div>
-          <div class="board-empty">Miscounts from testing? <b>Start New Week</b> resets "played" to 0, puts every fun fact back in the pool, and deals a fresh 24 onto the wheel (everyone gets at least one).</div>
+          <div class="board-empty">A fun fact that has been shown, guessed or stumped, stays off the wheel until you <b>Reset the Wheel</b>, however many meetings pass. Reset starts the game over: every fun fact goes back in and a fresh 24 are dealt (everyone gets at least one).</div>
         </div>
         <div class="panel">
           <div class="eyebrow">Setup</div>
           <div class="admin-actions">
             <button id="editFactsBtn" class="ghost">✏️ Edit Fun Facts</button>
-            <button id="weekFactsBtn" class="ghost">🎯 This Week's Facts (on wheel / played)</button>
-            <button id="shuffleBtn" class="ghost">🔄 Start New Week (reset &amp; reshuffle)</button>
+            <button id="weekFactsBtn" class="ghost">🎯 Wheel Facts (on wheel / played)</button>
+            <button id="shuffleBtn" class="ghost">🔄 Reset the Wheel (bring back every fact)</button>
             <button id="resetScoreBtn" class="danger-ghost">Reset Winners</button>
             <button id="logoutBtn" class="ghost">Log out</button>
           </div>
@@ -1058,8 +1094,8 @@ function renderWeekCard() {
   if (!line) return;
   const total = week.slots.length + week.pool.length + week.used.length;
   line.textContent = total === 0
-    ? "No facts loaded yet — add facts, then start a new week."
-    : `${total} fun facts this week · ${week.slots.length} on the wheel`;
+    ? "No facts loaded yet. Add fun facts and the wheel is dealt for you."
+    : `${total} fun facts in the game · ${week.slots.length} on the wheel`;
   $('weekBar').style.width = total === 0 ? '0%' : `${Math.round((week.used.length / total) * 100)}%`;
   $('weekSolved').textContent = `${week.used.length} played`;
   $('weekRemaining').textContent = `${week.slots.length + week.pool.length} left`;
@@ -1100,7 +1136,7 @@ function renderWinners(stumpRows, guesserRows) {
     : `<div class="board-empty">No correct guesses yet.</div>`;
 }
 
-// ---------- the wheel: every slice shows (a shortened) fun fact from this week's rotation ----------
+// ---------- the wheel: every slice shows (a shortened) fun fact that is still in play ----------
 function wrapFact(ctx, text, maxW, maxLines) {
   const words = String(text).trim().split(/\s+/).filter(Boolean);
   const lines = [];
@@ -1275,7 +1311,7 @@ async function resolveRound(solved, winnerGuesser, reason) {
   }
   $('roundFact').textContent = `"${round.factText}"`;
 
-  // Either way this fun fact is used up for the week; the wheel refills from everyone's reserve.
+  // Either way this fun fact is used up until the wheel is reset; the wheel refills from everyone's reserve.
   const { data: mixRow } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
   const w = normalizeWeek(mixRow && mixRow.mapping);
   afterRound(w, { name: round.activePerson, fact: round.factText });
@@ -1298,7 +1334,7 @@ function finishStory() {
   hideTimer();
   showGuessLog(false);
   const left = week.slots.length;
-  $('roundStatus').textContent = left ? 'Ready when you are.' : "🏁 That's every fun fact for this week!";
+  $('roundStatus').textContent = left ? 'Ready when you are.' : "🏁 That's every fun fact!";
   $('roundFact').textContent = '';
   updateSpinButtons();
 }
@@ -1317,8 +1353,8 @@ async function bumpUnguessed(name) {
 }
 
 async function shuffleWeek() {
-  if ((roundIsOpen() || phase === 'story') && !confirm("A round is still in progress. Starting a new week will end it. Continue?")) return;
-  if (week.used.length > 0 && !confirm(`Start a new week? Every fun fact goes back in the pool, a fresh ${WHEEL_SLOTS} are dealt onto the wheel, and "${week.used.length} played" resets to 0. (Winners are kept — use Reset Winners for those.)`)) return;
+  if ((roundIsOpen() || phase === 'story') && !confirm("A round is still in progress. Resetting the wheel will end it. Continue?")) return;
+  if (week.used.length > 0 && !confirm(`Reset the wheel? All ${week.used.length} fun facts that were already played go back in, and a fresh ${WHEEL_SLOTS} are dealt onto the wheel. (Winners are kept. Use Reset Winners for those.)`)) return;
 
   const { data: factsRows } = await sb.from('ff_facts').select('*');
   const bank = {};
@@ -1344,7 +1380,7 @@ async function shuffleWeek() {
   week = fresh;
   drawWheel();
   renderWeekCard();
-  $('roundStatus').textContent = "This week's mix is ready — spin when you are!";
+  $('roundStatus').textContent = "The wheel is ready. Spin when you are!";
   $('roundFact').textContent = '';
   updateSpinButtons();
   toast(`Dealt ${fresh.slots.length} fun facts onto the wheel (${fresh.pool.length} more in reserve).`);
@@ -1370,7 +1406,7 @@ async function openEditFacts() {
   overlay.innerHTML = `
     <div class="edit-card">
       <h2>Fun facts</h2>
-      <div class="hint">Everyone submits up to three. It's fine to leave some blank until you collect them — each week's mix picks one at random per person. Don't open this while sharing your screen.</div>
+      <div class="hint">Everyone submits up to three. It's fine to leave some blank until you collect them — new facts join the wheel as soon as you save, and facts that were already played stay off it. Don't open this while sharing your screen.</div>
       <div class="edit-scroll" id="factRows"></div>
       <div class="edit-actions">
         <button class="danger-ghost" id="factClear" style="margin-right:auto">Clear all</button>
@@ -1409,7 +1445,22 @@ async function openEditFacts() {
     });
     const { error } = await sb.from('ff_facts').upsert(upserts);
     if (error) { toast("Couldn't save — try logging in again."); return; }
-    toast("Fun facts saved.");
+
+    // keep the wheel in step with the list: deal it if it's empty, otherwise add/remove only what changed
+    const bank = {};
+    upserts.forEach(u => { bank[u.name] = [u.fact1, u.fact2, u.fact3]; });
+    const { data: mix } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
+    let w = normalizeWeek(mix && mix.mapping);
+    const empty = !w.slots.length && !w.pool.length && !w.used.length;
+    let touched = false;
+    if (empty) { const fresh = buildWeek(bank); if (fresh.slots.length) { w = fresh; touched = true; } }
+    else touched = syncWeekWithBank(w, bank);
+    if (touched) {
+      await saveWeek(w);
+      week = { slots: w.slots.slice(), pool: w.pool.slice(), used: w.used.slice() };
+      drawWheel(); renderWeekCard(); updateSpinButtons();
+    }
+    toast(touched ? `Fun facts saved. ${w.slots.length} on the wheel.` : "Fun facts saved.");
     close();
   });
 }
@@ -1455,7 +1506,7 @@ function openManageNames() {
   overlay.innerHTML = `
     <div class="edit-card">
       <h2>People</h2>
-      <div class="hint">Rename, remove or add people. Renames carry over to their fun facts, scores and this week's wheel. New people join the wheel at the next Start New Week, so add their fun facts first.</div>
+      <div class="hint">Rename, remove or add people. Renames carry over to their fun facts, scores and the wheel. New people get onto the wheel once you add their fun facts under Edit Fun Facts.</div>
       <div class="edit-scroll" id="nameRows"></div>
       <div class="name-add">
         <input type="text" id="newNameInput" maxlength="24" placeholder="Add a person…" aria-label="New person's name">
@@ -1578,13 +1629,13 @@ async function openWeekFacts() {
   if (phase !== 'idle' || roundIsOpen()) { toast('Finish the current round first.'); return; }
   const { data: mix } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
   const w = normalizeWeek(mix && mix.mapping);
-  if (!w.slots.length && !w.pool.length && !w.used.length) { toast('No week dealt yet. Press Start New Week first.'); return; }
+  if (!w.slots.length && !w.pool.length && !w.used.length) { toast('The wheel is empty. Add fun facts first.'); return; }
 
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="edit-card">
-      <h2>This week's fun facts</h2>
+      <h2>Wheel facts</h2>
       <div class="hint">See what's on the wheel, waiting in reserve, or already played. Mark a fact as played to pull it off, or put a played one back. Don't open this while sharing your screen.</div>
       <div class="edit-scroll" id="wkRows"></div>
       <div class="edit-actions">
