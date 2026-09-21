@@ -377,6 +377,37 @@
     .guesslog { position: static; min-height: 260px; }
   }
   @media (prefers-reduced-motion: reduce) { .round-timer.urgent, .live-dot, .log-item:last-child { animation: none; } }
+
+  /* ---------- roster: who's joined, name checkbox, people editor ---------- */
+  .roster-count { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 1.3rem; margin: 6px 0 10px; color: var(--accent); }
+  .roster-count.all { color: var(--good); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .chip {
+    padding: 6px 12px; font-size: .85rem; border-radius: 999px; box-shadow: none; transform: none;
+    background: rgba(255,255,255,.06); border: 1px solid var(--panel-line); color: var(--text-faint); font-weight: 600;
+  }
+  .chip.on { background: rgba(47,224,172,.16); border-color: rgba(47,224,172,.6); color: var(--text); cursor: pointer; }
+  .chip.on:hover { border-color: var(--accent-2); }
+  .chip:disabled { opacity: 1; cursor: default; }
+  .confirm-row { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; font-size: 1.02rem; cursor: pointer; }
+  .confirm-row[hidden] { display: none; }
+  .confirm-row input { width: 22px; height: 22px; flex: none; accent-color: var(--good); }
+  #idGo { width: 100%; margin-top: 10px; }
+  .id-msg { margin-top: 10px; color: var(--accent); font-size: .92rem; min-height: 1em; }
+  .name-edit { display: flex; align-items: center; gap: 10px; }
+  .name-edit input { flex: 1; min-width: 0; }
+  .name-edit .rm { padding: 6px 12px; font-size: .82rem; flex: none; }
+  .name-edit.removed input { text-decoration: line-through; opacity: .5; }
+  .name-add { display: flex; gap: 10px; margin-top: 12px; }
+  .name-add input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--panel-line); background: rgba(255,255,255,.06); color: var(--text); font: inherit; }
+  .fact-row .name small { font-weight: 400; color: var(--text-dim); margin-left: 6px; font-size: .8rem; }
+  .wk-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--panel-line); }
+  .wk-item .txt { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .92rem; }
+  .wk-item .pill { flex: none; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(255,182,72,.18); color: var(--accent); }
+  .wk-item.reserve .pill { background: rgba(108,123,255,.2); color: #aab3ff; }
+  .wk-item.played .pill { background: rgba(255,255,255,.1); color: var(--text-dim); }
+  .wk-item.played .txt { opacity: .55; text-decoration: line-through; }
+  .wk-item button { flex: none; padding: 6px 12px; font-size: .8rem; }
 </style>
 </head>
 <body>
@@ -396,7 +427,7 @@ const HOST_EMAIL = "host@fun-fact-faceoff.internal";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const ALL_NAMES = ["Allie","Chris","Cody","Curtis","Evan","Greg","Jaime","Jimmy","Jason","Kollin","Mersed","Paul","Riley","Shawn","Thomas","Tina"];
+let ALL_NAMES = ["Allie","Chris","Cody","Curtis","Evan","Greg","Jaime","Jimmy","Jason","Kollin","Mersed","Paul","Riley","Shawn","Thomas","Tina"];
 const WHEEL_COLORS = ["#ff5d8f","#ffb648","#2fe0ac","#6c7bff","#ff8a5c","#4dd4ff","#c77dff","#ffd23f","#ef476f","#06d6a0","#8338ec","#f4845f","#3a86ff","#fb5607","#83e377","#f77f00"];
 
 
@@ -464,6 +495,31 @@ let roundTimerInt = null;
 let guestRound = null;
 let myGuestName = localStorage.getItem('ffGuest.myName') || null;
 let guestTimerInt = null, guestRoundKey = null, guestStartMs = 0;
+
+// ===================== WHO'S PLAYING (names people have claimed on their phones) =====================
+let rosterRows = [];   // [{ name, claimed, sort_order }]
+let identityReady = false;
+const DEVICE_ID = (() => {
+  const make = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try {
+    let d = localStorage.getItem('ffGuest.device');
+    if (!d) { d = make(); localStorage.setItem('ffGuest.device', d); }
+    return d;
+  } catch (e) { return make(); }
+})();
+
+// The list of people lives in the database so the host can add or rename anyone.
+// If it can't be read, the built-in list keeps the game usable.
+async function loadRoster() {
+  const { data, error } = await sb.from('ff_roster').select('*');
+  if (error || !data || !data.length) {
+    if (!rosterRows.length) rosterRows = ALL_NAMES.map((name, i) => ({ name, claimed: false, sort_order: i }));
+    return false;
+  }
+  rosterRows = data.slice().sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+  ALL_NAMES = rosterRows.map(r => r.name);
+  return true;
+}
 
 // ===================== THE WEEK: 24 WHEEL SPOTS DEALT FROM EVERYONE'S FACTS =====================
 const WHEEL_SLOTS = 24;
@@ -779,6 +835,16 @@ function initHost() {
       <h2>Host controls</h2>
       <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen.</div>
       <div class="admin-grid">
+        <div class="panel players-card">
+          <div class="eyebrow">👥 Who's joined</div>
+          <div class="roster-count" id="rosterCount">0 of 0 ready</div>
+          <div class="chips" id="rosterChips"></div>
+          <div class="board-empty">Green = joined on a phone. Tap a green name to reset it (wrong pick, new phone). Names stay claimed from week to week, so people don't need to pick again on Mondays.</div>
+          <div class="admin-actions">
+            <button id="manageNamesBtn" class="ghost">👤 Add / rename people</button>
+            <button id="rosterClearBtn" class="danger-ghost">Reset all names</button>
+          </div>
+        </div>
         <div class="panel">
           <div class="eyebrow">🎁 Stumped the room · these people win</div>
           <ul class="board-list" id="stumpList"></ul>
@@ -799,6 +865,7 @@ function initHost() {
           <div class="eyebrow">Setup</div>
           <div class="admin-actions">
             <button id="editFactsBtn" class="ghost">✏️ Edit Fun Facts</button>
+            <button id="weekFactsBtn" class="ghost">🎯 This Week's Facts (on wheel / played)</button>
             <button id="shuffleBtn" class="ghost">🔄 Start New Week (reset &amp; reshuffle)</button>
             <button id="resetScoreBtn" class="danger-ghost">Reset Winners</button>
             <button id="logoutBtn" class="ghost">Log out</button>
@@ -846,14 +913,19 @@ function initHost() {
   $('nobodyBtn').addEventListener('click', onNobodyBtn);
   $('shuffleBtn').addEventListener('click', shuffleWeek);
   $('editFactsBtn').addEventListener('click', openEditFacts);
+  $('weekFactsBtn').addEventListener('click', openWeekFacts);
+  $('manageNamesBtn').addEventListener('click', openManageNames);
+  $('rosterClearBtn').addEventListener('click', releaseAllNames);
   $('resetScoreBtn').addEventListener('click', resetWinners);
 
+  refreshRoster();
   refreshWeekStatus();
   refreshWinners();
   restoreOpenRound();
   // the wheel labels use the display font, so paint them again once it has loaded
   if (document.fonts && document.fonts.load) document.fonts.load("700 24px Fredoka").then(() => drawWheel());
   trackChannel(sb.channel('host-week').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_week_mix' }, refreshWeekStatus).subscribe());
+  trackChannel(sb.channel('host-roster').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_roster' }, refreshRoster).subscribe());
   trackChannel(sb.channel('host-winners')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_scoreboard' }, refreshWinners)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_unguessed_prizes' }, refreshWinners)
@@ -1342,14 +1414,283 @@ async function openEditFacts() {
   });
 }
 
+// ---------- who's joined (host controls) ----------
+function renderRoster() {
+  const box = $('rosterChips');
+  if (!box) return;
+  const joined = rosterRows.filter(r => r.claimed).length;
+  const count = $('rosterCount');
+  count.textContent = `${joined} of ${rosterRows.length} ready`;
+  count.classList.toggle('all', rosterRows.length > 0 && joined === rosterRows.length);
+  box.innerHTML = rosterRows.map(r =>
+    `<button class="chip${r.claimed ? ' on' : ''}" data-name="${esc(r.name)}"${r.claimed ? ' title="Tap to reset this name"' : ' disabled'}>${r.claimed ? '✅' : '○'} ${esc(r.name)}</button>`
+  ).join('');
+  box.querySelectorAll('.chip.on').forEach(b => b.addEventListener('click', () => releaseName(b.dataset.name)));
+}
+
+async function refreshRoster() { await loadRoster(); renderRoster(); }
+
+async function releaseName(name) {
+  if (!confirm(`Reset ${name}? Whoever holds that name is asked to pick again, and the name is free for anyone.`)) return;
+  await sb.from('ff_claims').delete().eq('name', name);
+  await sb.from('ff_roster').update({ claimed: false }).eq('name', name);
+  await refreshRoster();
+  toast(`${name} is free to pick again.`);
+}
+
+async function releaseAllNames() {
+  if (!confirm("Reset every name? Everyone's phone will ask them to pick their name again.")) return;
+  const names = rosterRows.map(r => r.name);
+  await sb.from('ff_claims').delete().in('name', names);
+  await sb.from('ff_roster').update({ claimed: false }).in('name', names);
+  await refreshRoster();
+  toast("All names reset.");
+}
+
+// ---------- add / rename / remove people ----------
+function openManageNames() {
+  if (phase !== 'idle' || roundIsOpen()) { toast('Finish the current round first.'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="edit-card">
+      <h2>People</h2>
+      <div class="hint">Rename, remove or add people. Renames carry over to their fun facts, scores and this week's wheel. New people join the wheel at the next Start New Week, so add their fun facts first.</div>
+      <div class="edit-scroll" id="nameRows"></div>
+      <div class="name-add">
+        <input type="text" id="newNameInput" maxlength="24" placeholder="Add a person…" aria-label="New person's name">
+        <button class="ghost" id="newNameBtn">Add</button>
+      </div>
+      <div class="edit-actions">
+        <button class="ghost" id="namesCancel">Cancel</button>
+        <button id="namesSave">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+
+  const rowsEl = $('nameRows');
+  const addRow = (orig, name) => {
+    const row = document.createElement('div');
+    row.className = 'fact-row name-edit';
+    row.dataset.orig = orig;
+    row.innerHTML = `<input type="text" maxlength="24" value="${esc(name)}" aria-label="Name"><button class="danger-ghost rm">Remove</button>`;
+    row.querySelector('.rm').addEventListener('click', () => {
+      const gone = row.classList.toggle('removed');
+      row.querySelector('input').disabled = gone;
+      row.querySelector('.rm').textContent = gone ? 'Undo' : 'Remove';
+    });
+    rowsEl.appendChild(row);
+    return row;
+  };
+  rosterRows.forEach(r => addRow(r.name, r.name));
+
+  const addNew = () => {
+    const inp = $('newNameInput');
+    const v = inp.value.trim().replace(/\s+/g, ' ');
+    if (!v) return;
+    addRow('', v);
+    inp.value = '';
+    rowsEl.scrollTop = rowsEl.scrollHeight;
+  };
+  $('newNameBtn').addEventListener('click', addNew);
+  $('newNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') addNew(); });
+
+  function close() { overlay.classList.remove('show'); setTimeout(() => overlay.remove(), 250); }
+  $('namesCancel').addEventListener('click', close);
+  $('namesSave').addEventListener('click', async () => {
+    const plan = Array.from(rowsEl.querySelectorAll('.name-edit')).map(r => ({
+      orig: r.dataset.orig,
+      name: r.querySelector('input').value.trim().replace(/\s+/g, ' '),
+      removed: r.classList.contains('removed'),
+    })).filter(p => !(p.removed && !p.orig));   // added and then removed again: just drop it
+    const keep = plan.filter(p => !p.removed);
+    if (keep.some(p => !p.name)) { toast('Every person needs a name.'); return; }
+    const seen = new Set();
+    for (const p of keep) {
+      const k = p.name.toLowerCase();
+      if (seen.has(k)) { toast(`"${p.name}" is in the list twice.`); return; }
+      seen.add(k);
+    }
+    const btn = $('namesSave');
+    btn.disabled = true;
+    const ok = await applyNamePlan(plan);
+    btn.disabled = false;
+    if (ok) close();
+  });
+}
+
+async function applyNamePlan(plan) {
+  const removals = plan.filter(p => p.removed);
+  const renames = plan.filter(p => !p.removed && p.orig && p.orig !== p.name);
+  const adds = plan.filter(p => !p.removed && !p.orig);
+  if (!removals.length && !renames.length && !adds.length) { toast('No changes to save.'); return true; }
+  if (removals.length && !confirm(`Remove ${removals.map(p => p.orig).join(', ')}? Their fun facts and scores are deleted too.`)) return false;
+
+  const { data: mix } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
+  const w = normalizeWeek(mix && mix.mapping);
+  let weekChanged = false;
+  const fail = (what, error) => { console.error(what, error); toast(`Couldn't ${what}. Later changes were not applied.`); return false; };
+
+  for (const p of removals) {
+    const r = await sb.from('ff_roster').delete().eq('name', p.orig);
+    if (r.error) return fail(`remove ${p.orig}`, r.error);
+    await sb.from('ff_facts').delete().eq('name', p.orig);
+    await sb.from('ff_scoreboard').delete().eq('name', p.orig);
+    await sb.from('ff_unguessed_prizes').delete().eq('name', p.orig);
+    ['slots', 'pool', 'used'].forEach(k => {
+      const n = w[k].length;
+      w[k] = w[k].filter(x => x.name !== p.orig);
+      if (w[k].length !== n) weekChanged = true;
+    });
+  }
+  // fill any wheel spots left empty by a removal
+  while (weekChanged && w.slots.length < WHEEL_SLOTS && w.pool.length) {
+    w.slots.push(w.pool.splice(Math.floor(Math.random() * w.pool.length), 1)[0]);
+  }
+
+  for (const p of renames) {
+    const r = await sb.from('ff_roster').update({ name: p.name }).eq('name', p.orig);
+    if (r.error) return fail(`rename ${p.orig}`, r.error);
+    await sb.from('ff_facts').update({ name: p.name }).eq('name', p.orig);
+    await sb.from('ff_scoreboard').update({ name: p.name }).eq('name', p.orig);
+    await sb.from('ff_unguessed_prizes').update({ name: p.name }).eq('name', p.orig);
+    ['slots', 'pool', 'used'].forEach(k => w[k].forEach(x => { if (x.name === p.orig) { x.name = p.name; weekChanged = true; } }));
+  }
+
+  let order = rosterRows.reduce((m, r) => Math.max(m, r.sort_order || 0), 0);
+  for (const p of adds) {
+    const r = await sb.from('ff_roster').insert({ name: p.name, sort_order: ++order });
+    if (r.error) return fail(`add ${p.name}`, r.error);
+    await sb.from('ff_facts').upsert({ name: p.name, fact1: '', fact2: '', fact3: '' });
+  }
+
+  if (weekChanged) { shuffle(w.slots); await saveWeek(w); week = w; }
+  await refreshRoster();
+  drawWheel(); renderWeekCard(); updateSpinButtons();
+  await refreshWinners();
+  toast('People updated.');
+  return true;
+}
+
+// ---------- which fun facts are on the wheel / in reserve / already played ----------
+async function openWeekFacts() {
+  if (phase !== 'idle' || roundIsOpen()) { toast('Finish the current round first.'); return; }
+  const { data: mix } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
+  const w = normalizeWeek(mix && mix.mapping);
+  if (!w.slots.length && !w.pool.length && !w.used.length) { toast('No week dealt yet. Press Start New Week first.'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="edit-card">
+      <h2>This week's fun facts</h2>
+      <div class="hint">See what's on the wheel, waiting in reserve, or already played. Mark a fact as played to pull it off, or put a played one back. Don't open this while sharing your screen.</div>
+      <div class="edit-scroll" id="wkRows"></div>
+      <div class="edit-actions">
+        <button class="ghost" id="wkPutAll" style="margin-right:auto">Put all played back</button>
+        <button id="wkDone">Done</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+
+  const rowsEl = $('wkRows');
+  let flat = [];
+  const LABEL = { wheel: 'On wheel', reserve: 'Reserve', played: 'Played' };
+  const paint = () => {
+    flat = [];
+    const all = [
+      ...w.slots.map(x => ({ name: x.name, fact: x.fact, st: 'wheel' })),
+      ...w.pool.map(x => ({ name: x.name, fact: x.fact, st: 'reserve' })),
+      ...w.used.map(x => ({ name: x.name, fact: x.fact, st: 'played' })),
+    ];
+    const names = ALL_NAMES.slice();
+    all.forEach(x => { if (!names.includes(x.name)) names.push(x.name); });
+    rowsEl.innerHTML = '';
+    names.forEach(name => {
+      const mine = all.filter(x => x.name === name);
+      if (!mine.length) return;
+      const count = st => mine.filter(x => x.st === st).length;
+      const row = document.createElement('div');
+      row.className = 'fact-row';
+      row.innerHTML = `<div class="name">${esc(name)} <small>${count('wheel')} on wheel · ${count('reserve')} reserve · ${count('played')} played</small></div>` +
+        mine.map(x => {
+          flat.push(x);
+          const k = flat.length - 1;
+          return `<div class="wk-item ${x.st}"><span class="pill">${LABEL[x.st]}</span><span class="txt">${esc(x.fact)}</span>` +
+            `<button class="ghost" data-k="${k}">${x.st === 'played' ? 'Put back' : 'Mark played'}</button></div>`;
+        }).join('');
+      rowsEl.appendChild(row);
+    });
+    rowsEl.querySelectorAll('button[data-k]').forEach(b => b.addEventListener('click', () => act(flat[Number(b.dataset.k)])));
+    $('wkPutAll').disabled = !w.used.length;
+  };
+
+  const same = (a, b) => a.name === b.name && a.fact === b.fact;
+  const putBack = item => {
+    const i = w.used.findIndex(u => same(u, item));
+    if (i < 0) return;
+    w.used.splice(i, 1);
+    (w.slots.length < WHEEL_SLOTS ? w.slots : w.pool).push({ name: item.name, fact: item.fact });
+  };
+  const persist = async () => {
+    shuffle(w.slots);
+    await saveWeek(w);
+    week = { slots: w.slots.slice(), pool: w.pool.slice(), used: w.used.slice() };
+    drawWheel(); renderWeekCard(); updateSpinButtons();
+    paint();
+  };
+  const act = async item => {
+    if (phase !== 'idle' || roundIsOpen()) { toast('Finish the current round first.'); return; }
+    if (item.st === 'played') putBack(item);
+    else if (item.st === 'wheel') afterRound(w, item);
+    else {
+      const i = w.pool.findIndex(p => same(p, item));
+      if (i >= 0) { w.pool.splice(i, 1); w.used.push({ name: item.name, fact: item.fact }); }
+    }
+    await persist();
+  };
+
+  $('wkPutAll').addEventListener('click', async () => {
+    if (!confirm('Put every played fun fact back into play?')) return;
+    w.used.slice().forEach(putBack);
+    await persist();
+  });
+  $('wkDone').addEventListener('click', () => { overlay.classList.remove('show'); setTimeout(() => overlay.remove(), 250); });
+  paint();
+}
+
 /* =====================================================================
    GUEST VIEW — guess only. No leaderboard, nothing that hints at answers.
    ===================================================================== */
 function initGuest() {
   document.body.classList.remove('host-mode');
+  identityReady = false;
   renderGuest();
   refreshRound();
+  syncIdentity();
   trackChannel(sb.channel('guest-round').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_round' }, refreshRound).subscribe());
+  // names other people claim (or Allie resets) show up here right away
+  trackChannel(sb.channel('guest-roster').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_roster' }, syncIdentity).subscribe());
+}
+
+// Ask the database which name (if any) this phone holds, and refresh who is taken.
+async function syncIdentity() {
+  await loadRoster();
+  const { data, error } = await sb.rpc('ff_my_claim', { p_device: DEVICE_ID });
+  const firstTime = !identityReady;
+  identityReady = true;
+  if (!error) {
+    const mine = data || null;
+    if (myGuestName && !mine && !firstTime) toast("Your name was reset. Please pick it again.");
+    if (mine !== myGuestName) {
+      myGuestName = mine;
+      try { if (mine) localStorage.setItem('ffGuest.myName', mine); else localStorage.removeItem('ffGuest.myName'); } catch (e) {}
+    }
+  }
+  renderIdentity();
+  renderFactBanner();
 }
 
 async function refreshRound() {
@@ -1422,28 +1763,69 @@ function renderGuest() {
 function renderIdentity() {
   const el = $('identityPanel');
   if (!el) return;
+  if (!identityReady) { el.innerHTML = `<div class="whoami">Loading names…</div>`; return; }
   if (myGuestName) {
-    el.innerHTML = `<div class="whoami">Playing as <strong>&nbsp;${esc(myGuestName)}</strong><button class="ghost" id="changeId">Change</button></div>`;
-    $('changeId').addEventListener('click', () => { myGuestName = null; localStorage.removeItem('ffGuest.myName'); renderGuest(); });
-  } else {
-    el.innerHTML = `
-      <div class="eyebrow">Who are you?</div>
-      <div class="identity-row">
-        <select id="idSelect" aria-label="Your name">
-          <option value="">Pick your name…</option>
-          ${ALL_NAMES.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
-        </select>
-        <button id="idGo">Let's go</button>
-      </div>
-    `;
-    $('idGo').addEventListener('click', () => {
-      const v = $('idSelect').value;
-      if (!v) return;
-      myGuestName = v;
-      localStorage.setItem('ffGuest.myName', v);
-      renderGuest();
+    el.innerHTML = `<div class="whoami">Playing as <strong>&nbsp;${esc(myGuestName)}</strong><button class="ghost" id="changeId">Not me?</button></div>`;
+    $('changeId').addEventListener('click', async () => {
+      await sb.rpc('ff_release_device', { p_device: DEVICE_ID });
+      myGuestName = null;
+      try { localStorage.removeItem('ffGuest.myName'); } catch (e) {}
+      await loadRoster();
+      renderIdentity();
+      renderFactBanner();
     });
+    return;
   }
+
+  // keep what they were in the middle of choosing if the list refreshes under them
+  const prevSel = $('idSelect') ? $('idSelect').value : '';
+  const prevChecked = $('idConfirm') ? $('idConfirm').checked : false;
+  const taken = new Set(rosterRows.filter(r => r.claimed).map(r => r.name));
+  el.innerHTML = `
+    <div class="eyebrow">Who are you?</div>
+    <div class="identity-row">
+      <select id="idSelect" aria-label="Your name">
+        <option value="">Pick your name…</option>
+        ${rosterRows.map(r => `<option value="${esc(r.name)}"${taken.has(r.name) ? ' disabled' : ''}>${esc(r.name)}${taken.has(r.name) ? ' (already taken)' : ''}</option>`).join('')}
+      </select>
+    </div>
+    <label class="confirm-row" id="idConfirmRow" hidden>
+      <input type="checkbox" id="idConfirm">
+      <span>Yes, I'm <b id="idConfirmName"></b></span>
+    </label>
+    <button id="idGo" disabled>Let's go</button>
+    <div class="id-msg" id="idMsg" role="status"></div>
+  `;
+  const sel = $('idSelect'), box = $('idConfirm'), go = $('idGo');
+  const sync = () => {
+    $('idConfirmRow').hidden = !sel.value;
+    $('idConfirmName').textContent = sel.value;
+    go.disabled = !(sel.value && box.checked);
+  };
+  if (prevSel && !taken.has(prevSel)) { sel.value = prevSel; box.checked = prevChecked; }
+  sync();
+  sel.addEventListener('change', () => { box.checked = false; sync(); });
+  box.addEventListener('change', sync);
+
+  go.addEventListener('click', async () => {
+    const v = sel.value;
+    if (!v || !box.checked) return;
+    go.disabled = true;
+    const { data, error } = await sb.rpc('ff_claim_name', { p_name: v, p_device: DEVICE_ID });
+    if (error) { toast("Couldn't join. Check your connection and try again."); sync(); return; }
+    if (data === 'ok') {
+      myGuestName = v;
+      try { localStorage.setItem('ffGuest.myName', v); } catch (e) {}
+      renderIdentity();
+      renderFactBanner();
+      return;
+    }
+    await loadRoster();
+    renderIdentity();
+    $('idMsg').textContent = data === 'taken'
+      ? `${v} is already taken by another phone. If that's really you, ask Allie to reset it.`
+      : "That name isn't on the list any more. Pick again.";
+  });
 }
 
 function renderFactBanner() {
