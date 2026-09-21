@@ -108,8 +108,8 @@
   body.host-mode::after { width: 46vmax; height: 46vmax; right: -16vmax; bottom: -18vmax; background: rgba(255,182,72,.16); }
 
   .presenter {
-    --wheel: clamp(240px, calc(100vh - 292px - 5vh), 46vw);
-    --wheel: clamp(240px, calc(100dvh - 292px - 5dvh), 46vw);
+    --wheel: clamp(240px, calc(100vh - 304px - 5vh), 46vw);
+    --wheel: clamp(240px, calc(100dvh - 304px - 5dvh), 46vw);
     min-height: calc(100vh - 32px);
     min-height: calc(100dvh - 32px);
     display: grid; grid-template-rows: auto auto 1fr; gap: 12px;
@@ -324,6 +324,59 @@
   @media (prefers-reduced-motion: reduce) { .confetti { display: none; } button { transition: none; } }
 
   .loading-note { text-align: center; color: var(--text-dim); padding: 60px 20px; }
+
+  /* ---------- round timer, live guessing log, story time ---------- */
+  .round-card { position: relative; padding: 12px 150px 16px; }
+  .round-timer {
+    position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+    font-family: 'Space Mono', 'Courier New', monospace; font-weight: 700; font-size: clamp(1.2rem, 3vh, 2rem);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    padding: 6px 16px; border-radius: 999px; background: rgba(0,0,0,.28);
+    border: 1px solid rgba(255,182,72,.45); color: var(--accent);
+  }
+  .round-timer.urgent { color: #fff; background: rgba(255,93,143,.55); border-color: var(--accent-2); animation: timerPulse 1s ease-in-out infinite; }
+  .round-timer.story { font-family: 'Fredoka', 'Work Sans', system-ui, sans-serif; color: var(--good); border-color: rgba(47,224,172,.5); }
+  @keyframes timerPulse { 50% { transform: translateY(-50%) scale(1.07); } }
+  .timer-bar { position: absolute; left: 18px; right: 18px; bottom: 6px; height: 5px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+  .timer-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .3s linear; }
+
+  .left-card { position: relative; }
+  .pane { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(14px, 3vh, 26px); }
+  .guesslog { position: absolute; inset: 22px; width: auto; align-items: stretch; justify-content: flex-start; gap: 12px; }
+  .log-head { display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .log-head .eyebrow { color: var(--accent); font-size: clamp(.85rem, 2vh, 1.15rem); margin: 0; }
+  .live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--good); box-shadow: 0 0 10px 2px rgba(47,224,172,.7); animation: twinkle 1.2s ease-in-out infinite; }
+  .log-count { font-family: 'Space Mono', 'Courier New', monospace; font-size: .8rem; background: rgba(255,255,255,.1); border-radius: 999px; padding: 2px 9px; color: var(--text-dim); }
+  .log-list { list-style: none; margin: 0; padding: 0 4px 0 0; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; }
+  .log-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 16px;
+    background: rgba(255,255,255,.06); border: 1px solid var(--panel-line); font-size: clamp(.9rem, 2vh, 1.15rem);
+  }
+  .log-item:last-child { animation: popIn .25s ease-out; }
+  .log-item .av {
+    flex: none; width: clamp(28px, 4.4vh, 38px); height: clamp(28px, 4.4vh, 38px); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-family: 'Fredoka', sans-serif; font-weight: 700; color: #180f33;
+  }
+  .log-item .msg { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
+  .log-item .msg em { font-style: normal; font-weight: 700; color: var(--accent); }
+  .log-item.first { border-color: rgba(255,182,72,.7); background: rgba(255,182,72,.14); }
+  .log-item .badge { flex: none; font-size: .78rem; font-weight: 700; color: var(--accent); }
+  .log-empty { color: var(--text-faint); text-align: center; padding: 18px 8px; font-size: .95rem; }
+  @keyframes popIn { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+
+  .guest-timer {
+    display: inline-block; font-family: 'Space Mono', 'Courier New', monospace; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--accent); background: rgba(255,182,72,.12); border: 1px solid rgba(255,182,72,.4);
+    border-radius: 999px; padding: 4px 14px; margin-bottom: 10px;
+  }
+  .guest-timer.urgent { color: #fff; background: rgba(255,93,143,.5); border-color: var(--accent-2); }
+
+  @media (max-width: 1000px) {
+    .round-card { padding: 12px 20px 16px; }
+    .round-timer { position: static; transform: none; align-self: center; margin-top: 6px; animation: none; }
+    .guesslog { position: static; min-height: 260px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .round-timer.urgent, .live-dot, .log-item:last-child { animation: none; } }
 </style>
 </head>
 <body>
@@ -347,10 +400,12 @@ const ALL_NAMES = ["Allie","Chris","Cody","Curtis","Evan","Greg","Jaime","Jimmy"
 const WHEEL_COLORS = ["#ff5d8f","#ffb648","#2fe0ac","#6c7bff","#ff8a5c","#4dd4ff","#c77dff","#ffd23f","#ef476f","#06d6a0","#8338ec","#f4845f","#3a86ff","#fb5607","#83e377","#f77f00"];
 
 
-// ===================== TOAST =====================
+// ===================== SMALL HELPERS =====================
+const $ = id => document.getElementById(id);
+
 let toastTimer = null;
 function toast(msg) {
-  const el = document.getElementById('toast');
+  const el = $('toast');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
@@ -373,57 +428,60 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// ===================== ROLE / BOOT =====================
+function fmtClock(secs) {
+  const s = Math.max(0, Math.ceil(secs));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// round ids are 'r' + the host's clock at the moment guessing opened
+function roundStartFromId(id) {
+  const n = parseInt(String(id).replace(/\D/g, ''), 10);
+  return Number.isFinite(n) ? n : Date.now();
+}
+
+// Stable pseudo-random order for the wheel. It depends only on the name and this week's
+// shuffle stamp, so slices never line up with the roster order and never move between redraws.
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+// ===================== STATE =====================
+let ROUND_SECONDS = 60;
+
 let isHost = false;
 let activeChannels = [];
 function trackChannel(ch) { activeChannels.push(ch); }
 function clearChannels() { activeChannels.forEach(ch => sb.removeChannel(ch)); activeChannels = []; }
 
-async function hostLogin(passcode) {
-  const { error } = await sb.auth.signInWithPassword({ email: HOST_EMAIL, password: passcode });
-  if (error) { toast("Wrong passcode."); return false; }
-  return true;
-}
-async function hostLogout() {
-  await sb.auth.signOut();
-}
-
-async function boot() {
-  const { data: { session } } = await sb.auth.getSession();
-  isHost = !!session;
-
-  // Deferred with setTimeout: supabase-js holds an auth lock while this callback runs, so
-  // starting new queries synchronously in here can deadlock.
-  sb.auth.onAuthStateChange((_event, session) => {
-    const nowHost = !!session;
-    if (nowHost === isHost) return;
-    setTimeout(() => {
-      Music.stop();
-      stopSpinTicks();
-      clearChannels();
-      if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
-      isHost = nowHost;
-      if (isHost) initHost(); else initGuest();
-    }, 0);
-  });
-
-  if (isHost) initHost(); else initGuest();
-}
-boot();
-
-/* =====================================================================
-   HOST VIEW
-   Top screen = wheel + QR only (this is what gets screen-shared).
-   Everything that could spoil an answer lives below the fold.
-   ===================================================================== */
+// host
+let phase = 'idle';            // idle -> spinning -> guessing -> story -> idle
 let hostSpinning = false;
 let hostCurrentRotation = 0;
 let currentRound = null;
 let unsubGuesses = null;
-let latestWeekStatus = { remaining: [], solved: [] };
+let latestWeekStatus = { remaining: [], solved: [], seed: '' };
+let latestMix = {};            // name -> this week's fact (host-only data)
+let logRows = [];
+let logHighlight = null;
+let lastRound = null;
+let roundTimerInt = null;
 
-// A light "thinking" loop built from oscillators: plucky A-minor melody over a soft bass,
-// with a woodblock tick. Plays only while a round is open.
+// guest
+let guestRound = null;
+let myGuestName = localStorage.getItem('ffGuest.myName') || null;
+let guestTimerInt = null, guestRoundKey = null, guestStartMs = 0;
+
+function orderedRemaining() {
+  const seed = latestWeekStatus.seed || '';
+  return latestWeekStatus.remaining.slice().sort((a, b) =>
+    hashStr(a + '|' + seed) - hashStr(b + '|' + seed) || a.localeCompare(b));
+}
+
+// ===================== SOUND =====================
+// Everything is generated in the browser (no audio files): wheel clicks, a bell on landing,
+// a light "thinking" loop while guesses are open, and a buzzer when time runs out.
 const Music = (() => {
   let ctx = null, master = null, fx = null, timer = null, nextTime = 0, step = 0;
   let enabled = localStorage.getItem('cc.music') !== 'off';
@@ -450,6 +508,7 @@ const Music = (() => {
       nextTime += STEP; step++;
     }
   }
+  const live = () => enabled && ctx && ctx.state === 'running';
   return {
     unlock() {
       if (!ctx) {
@@ -480,9 +539,8 @@ const Music = (() => {
       master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
       master.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
     },
-    // Wheel noise: a wooden click as each slice passes the pointer, and a bell when it lands.
     tick() {
-      if (!enabled || !ctx || ctx.state !== 'running') return;
+      if (!live()) return;
       const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
       o.type = 'triangle';
       o.frequency.setValueAtTime(1500 + Math.random() * 200, t);
@@ -494,7 +552,7 @@ const Music = (() => {
       o.start(t); o.stop(t + 0.07);
     },
     ding() {
-      if (!enabled || !ctx || ctx.state !== 'running') return;
+      if (!live()) return;
       const t = ctx.currentTime;
       [[880, 0.5], [1320, 0.28], [1760, 0.14]].forEach(([f, v]) => {
         const o = ctx.createOscillator(), g = ctx.createGain();
@@ -504,6 +562,19 @@ const Music = (() => {
         g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
         o.connect(g); g.connect(fx);
         o.start(t); o.stop(t + 1.2);
+      });
+    },
+    buzz() {
+      if (!live()) return;
+      const t = ctx.currentTime;
+      [0, 0.3].forEach(d => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sawtooth'; o.frequency.value = 170;
+        g.gain.setValueAtTime(0.0001, t + d);
+        g.gain.exponentialRampToValueAtTime(0.35, t + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.24);
+        o.connect(g); g.connect(fx);
+        o.start(t + d); o.stop(t + d + 0.3);
       });
     },
     setEnabled(on) { enabled = on; localStorage.setItem('cc.music', on ? 'on' : 'off'); if (!on) this.stop(); },
@@ -536,18 +607,66 @@ function stopSpinTicks() {
   if (spinTicksRAF !== null) { cancelAnimationFrame(spinTicksRAF); spinTicksRAF = null; }
 }
 
+// ===================== ROLE / BOOT =====================
+async function hostLogin(passcode) {
+  const { error } = await sb.auth.signInWithPassword({ email: HOST_EMAIL, password: passcode });
+  if (error) { toast("Wrong passcode."); return false; }
+  return true;
+}
+async function hostLogout() {
+  await sb.auth.signOut();
+}
+
+function resetHostRuntime() {
+  Music.stop();
+  stopSpinTicks();
+  stopRoundTimer();
+  clearInterval(guestTimerInt); guestTimerInt = null; guestRoundKey = null;
+  clearChannels();
+  if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
+  phase = 'idle'; hostSpinning = false; currentRound = null;
+}
+
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  isHost = !!session;
+
+  // Deferred with setTimeout: supabase-js holds an auth lock while this callback runs, so
+  // starting new queries synchronously in here can deadlock.
+  sb.auth.onAuthStateChange((_event, session) => {
+    const nowHost = !!session;
+    if (nowHost === isHost) return;
+    setTimeout(() => {
+      resetHostRuntime();
+      isHost = nowHost;
+      if (isHost) initHost(); else initGuest();
+    }, 0);
+  });
+
+  if (isHost) initHost(); else initGuest();
+}
+boot();
+
+/* =====================================================================
+   HOST VIEW
+   Top screen = what gets screen-shared. Anything that could spoil an answer
+   (who owns which fact, the winners lists) lives in the hidden host controls.
+   ===================================================================== */
 function roundIsOpen() { return !!(currentRound && !currentRound.resolved); }
 
 function updateSpinButtons() {
-  const spinBtn = document.getElementById('spinBtn');
-  const nobodyBtn = document.getElementById('nobodyBtn');
-  if (spinBtn) spinBtn.disabled = hostSpinning || roundIsOpen() || latestWeekStatus.remaining.length === 0;
-  if (nobodyBtn) nobodyBtn.disabled = !roundIsOpen();
+  const spinBtn = $('spinBtn'), nobodyBtn = $('nobodyBtn');
+  if (spinBtn) spinBtn.disabled = hostSpinning || roundIsOpen() || phase === 'story' || latestWeekStatus.remaining.length === 0;
+  if (nobodyBtn) {
+    nobodyBtn.disabled = !(roundIsOpen() || phase === 'story');
+    nobodyBtn.textContent = phase === 'story' ? '✅ Next fun fact' : '🤷 Nobody Got It';
+    nobodyBtn.classList.toggle('ghost', phase !== 'story');
+  }
 }
 
 function initHost() {
   document.body.classList.add('host-mode');
-  const app = document.getElementById('app');
+  const app = $('app');
   app.innerHTML = `
     <section class="presenter">
       <div class="brand">
@@ -556,20 +675,32 @@ function initHost() {
         <span class="t-emoji">🕵️</span>
       </div>
 
-      <div class="panel round-card">
+      <div class="panel round-card" id="roundCard">
         <div class="status" id="roundStatus">Ready when you are.</div>
         <div class="fact" id="roundFact"></div>
+        <div class="round-timer" id="roundTimer" hidden></div>
+        <div class="timer-bar" id="timerBar" hidden><i id="timerFill"></i></div>
       </div>
 
       <div class="presenter-grid">
-        <div class="panel side-card">
-          <div class="eyebrow">How to play</div>
-          <ol class="steps">
-            <li class="step"><div class="ico">📱</div><div><b>Scan the code</b><span>Point your phone at the QR code. No login needed.</span></div></li>
-            <li class="step"><div class="ico">🕵️</div><div><b>Pick who it is</b><span>Tap the name you think the fun fact belongs to.</span></div></li>
-            <li class="step"><div class="ico">🎁</div><div><b>Win a prize</b><span>If nobody guesses your fun fact, you stump everyone and win a prize.</span></div></li>
-            <li class="step"><div class="ico">⚡</div><div><b>Be the fastest</b><span>The first correct guess gets the shout-out. Can't guess your own fact!</span></div></li>
-          </ol>
+        <div class="panel side-card left-card">
+          <div class="pane howto" id="howTo">
+            <div class="eyebrow">How to play</div>
+            <ol class="steps">
+              <li class="step"><div class="ico">📱</div><div><b>Scan the code</b><span>Point your phone at the QR code. No login needed.</span></div></li>
+              <li class="step"><div class="ico">🕵️</div><div><b>Pick who it is</b><span>Tap the name you think the fun fact belongs to. You get 60 seconds.</span></div></li>
+              <li class="step"><div class="ico">🎁</div><div><b>Win a prize</b><span>If nobody guesses your fun fact, you stump everyone and win a prize.</span></div></li>
+              <li class="step"><div class="ico">⚡</div><div><b>Be the fastest</b><span>The first correct guess gets the shout-out. Can't guess your own fact!</span></div></li>
+            </ol>
+          </div>
+          <div class="pane guesslog" id="guessLog" hidden>
+            <div class="log-head">
+              <span class="live-dot" aria-hidden="true"></span>
+              <span class="eyebrow">Live Guessing Log</span>
+              <span class="log-count" id="logCount">0</span>
+            </div>
+            <ol class="log-list" id="logList" aria-live="polite"></ol>
+          </div>
         </div>
 
         <div class="stage">
@@ -577,7 +708,7 @@ function initHost() {
             <div class="bulbs" id="bulbs"></div>
             <div class="pointer"></div>
             <div class="wheel-rim"></div>
-            <div class="wheel-clip"><canvas id="wheel" width="600" height="600"></canvas></div>
+            <div class="wheel-clip"><canvas id="wheel" width="900" height="900"></canvas></div>
             <div class="hub">🎉</div>
           </div>
           <div class="stage-controls">
@@ -614,7 +745,8 @@ function initHost() {
           <div class="eyebrow">This week</div>
           <div id="weekLine">No facts loaded yet</div>
           <div class="bar"><div class="bar-fill" id="weekBar" style="width:0%"></div></div>
-          <div class="counts"><span id="weekSolved">0 solved</span><span id="weekRemaining">0 left</span></div>
+          <div class="counts"><span id="weekSolved">0 played</span><span id="weekRemaining">0 left</span></div>
+          <div class="board-empty" id="lastRoundLine"></div>
         </div>
         <div class="panel">
           <div class="eyebrow">Setup</div>
@@ -629,7 +761,7 @@ function initHost() {
     </section>
   `;
 
-  const bulbs = document.getElementById('bulbs');
+  const bulbs = $('bulbs');
   for (let i = 0; i < 32; i++) {
     const b = document.createElement('i');
     b.className = 'bulb';
@@ -639,8 +771,7 @@ function initHost() {
 
   buildQr();
 
-  const adminPanel = document.getElementById('adminPanel');
-  const hostToggle = document.getElementById('hostToggle');
+  const adminPanel = $('adminPanel'), hostToggle = $('hostToggle');
   hostToggle.addEventListener('click', () => {
     const show = adminPanel.hidden;
     adminPanel.hidden = !show;
@@ -650,7 +781,7 @@ function initHost() {
     else window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  const musicToggle = document.getElementById('musicToggle');
+  const musicToggle = $('musicToggle');
   const paintMusic = () => {
     const on = Music.isEnabled();
     musicToggle.textContent = on ? '🔊 Sound on' : '🔇 Sound off';
@@ -663,21 +794,91 @@ function initHost() {
     if (Music.isEnabled() && roundIsOpen()) { Music.unlock(); Music.start(); }
   });
 
-  document.getElementById('logoutBtn').addEventListener('click', hostLogout);
-  document.getElementById('spinBtn').addEventListener('click', spinHost);
-  document.getElementById('nobodyBtn').addEventListener('click', () => resolveRound(false, null));
-  document.getElementById('shuffleBtn').addEventListener('click', shuffleWeek);
-  document.getElementById('editFactsBtn').addEventListener('click', openEditFacts);
-  document.getElementById('resetScoreBtn').addEventListener('click', resetWinners);
+  $('logoutBtn').addEventListener('click', hostLogout);
+  $('spinBtn').addEventListener('click', spinHost);
+  $('nobodyBtn').addEventListener('click', onNobodyBtn);
+  $('shuffleBtn').addEventListener('click', shuffleWeek);
+  $('editFactsBtn').addEventListener('click', openEditFacts);
+  $('resetScoreBtn').addEventListener('click', resetWinners);
 
   refreshWeekStatus();
   refreshWinners();
   restoreOpenRound();
+  // the wheel labels use the display font, so paint them again once it has loaded
+  if (document.fonts && document.fonts.load) document.fonts.load("700 24px Fredoka").then(() => drawWheel());
   trackChannel(sb.channel('host-week').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_week_status' }, refreshWeekStatus).subscribe());
   trackChannel(sb.channel('host-winners')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_scoreboard' }, refreshWinners)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_unguessed_prizes' }, refreshWinners)
     .subscribe());
+}
+
+// ---------- left card: How to play <-> Live Guessing Log ----------
+function showGuessLog(on) {
+  const howTo = $('howTo'), log = $('guessLog');
+  if (!howTo || !log) return;
+  howTo.hidden = on;
+  log.hidden = !on;
+}
+
+function renderGuessLog() {
+  const list = $('logList');
+  if (!list) return;
+  $('logCount').textContent = logRows.length;
+  if (!logRows.length) {
+    list.innerHTML = `<li class="log-empty">${phase === 'spinning' ? 'The wheel is spinning…' : 'Waiting for the first guess…'}</li>`;
+    return;
+  }
+  list.innerHTML = logRows.map(g => {
+    const first = logHighlight && logHighlight.guesser === g.guesser && logHighlight.guess === g.guess;
+    const color = WHEEL_COLORS[Math.max(0, ALL_NAMES.indexOf(g.guesser)) % WHEEL_COLORS.length];
+    return `<li class="log-item${first ? ' first' : ''}">
+      <span class="av" style="background:${color}">${esc(g.guesser.charAt(0))}</span>
+      <span class="msg"><b>${esc(g.guesser)}</b> guessed <em>${esc(g.guess)}</em></span>
+      ${first ? '<span class="badge">⭐ First!</span>' : ''}
+    </li>`;
+  }).join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+// ---------- 60-second guessing timer ----------
+function paintTimer(left) {
+  const pill = $('roundTimer'), bar = $('timerBar'), fill = $('timerFill');
+  if (!pill) return;
+  pill.hidden = false; bar.hidden = false;
+  pill.textContent = '⏱ ' + fmtClock(left);
+  pill.classList.remove('story');
+  pill.classList.toggle('urgent', left <= 10);
+  fill.style.width = Math.max(0, Math.min(100, left / ROUND_SECONDS * 100)) + '%';
+}
+function showStoryPill() {
+  const pill = $('roundTimer'), bar = $('timerBar');
+  if (!pill) return;
+  pill.hidden = false; bar.hidden = true;
+  pill.textContent = '🎤 Story time';
+  pill.classList.remove('urgent');
+  pill.classList.add('story');
+}
+function hideTimer() {
+  const pill = $('roundTimer'), bar = $('timerBar');
+  if (pill) pill.hidden = true;
+  if (bar) bar.hidden = true;
+}
+function startRoundTimer(startMs) {
+  stopRoundTimer();
+  const tick = () => {
+    const left = Math.max(0, ROUND_SECONDS - (Date.now() - startMs) / 1000);
+    paintTimer(left);
+    if (left <= 0) {
+      stopRoundTimer();
+      if (roundIsOpen()) resolveRound(false, null, 'timeout');
+    }
+  };
+  tick();
+  if (roundIsOpen()) roundTimerInt = setInterval(tick, 250);
+}
+function stopRoundTimer() {
+  if (roundTimerInt !== null) { clearInterval(roundTimerInt); roundTimerInt = null; }
 }
 
 // If the host reloads mid-round, pick the open round back up instead of leaving it stuck.
@@ -686,19 +887,36 @@ async function restoreOpenRound() {
     sb.from('ff_round').select('*').eq('id', true).maybeSingle(),
     sb.from('ff_round_secret').select('*').eq('id', true).maybeSingle(),
   ]);
-  if (pub && pub.status === 'open' && sec && sec.round_id && sec.round_id === pub.round_id) {
-    currentRound = { roundId: pub.round_id, activePerson: sec.active_person, factText: sec.fact_text, resolved: false };
-    document.getElementById('roundStatus').textContent = "🕵️ Guessing is open!";
-    document.getElementById('roundFact').textContent = `"${sec.fact_text}"`;
-    updateSpinButtons();
-    watchGuessesForRound(pub.round_id);
+  if (!(pub && pub.status === 'open' && sec && sec.round_id && sec.round_id === pub.round_id)) return;
+
+  const start = roundStartFromId(pub.round_id);
+  if (Date.now() - start > (ROUND_SECONDS + 5) * 1000) {
+    // Nobody was running the clock for this round, so it can't fairly be scored either way.
+    await sb.from('ff_round').update({ status: 'idle', round_id: null, fact_text: null, candidates: [], winner: null, solved_identity: null }).eq('id', true);
+    toast("Cleared an unfinished round from earlier. Nothing was scored.");
+    return;
   }
+  currentRound = { roundId: pub.round_id, activePerson: sec.active_person, factText: sec.fact_text, resolved: false };
+  phase = 'guessing';
+  logRows = []; logHighlight = null;
+  showGuessLog(true);
+  $('roundStatus').textContent = "🕵️ Guessing is open!";
+  $('roundFact').textContent = `"${sec.fact_text}"`;
+  updateSpinButtons();
+  watchGuessesForRound(pub.round_id);
+  startRoundTimer(start);
 }
 
 async function refreshWeekStatus() {
-  const { data } = await sb.from('ff_week_status').select('*').eq('id', true).maybeSingle();
-  latestWeekStatus = data ? { remaining: data.remaining || [], solved: data.solved || [] } : { remaining: [], solved: [] };
-  drawWheel(latestWeekStatus.remaining);
+  const [{ data: ws }, { data: mix }] = await Promise.all([
+    sb.from('ff_week_status').select('*').eq('id', true).maybeSingle(),
+    sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle(),
+  ]);
+  latestWeekStatus = ws
+    ? { remaining: ws.remaining || [], solved: ws.solved || [], seed: ws.generated_at || '' }
+    : { remaining: [], solved: [], seed: '' };
+  latestMix = (mix && mix.mapping) || {};
+  drawWheel();
   renderWeekCard();
   updateSpinButtons();
 }
@@ -716,29 +934,38 @@ async function refreshWinners() {
 
 function buildQr() {
   const url = location.origin + location.pathname;
-  const box = document.getElementById('qrBox');
+  const box = $('qrBox');
   box.innerHTML = '';
   new QRCode(box, { text: url, width: 440, height: 440, colorDark: '#180f33', colorLight: '#ffffff' });
-  document.getElementById('qrUrl').textContent = (location.host + location.pathname).replace(/index\.html$/, '');
+  $('qrUrl').textContent = (location.host + location.pathname).replace(/index\.html$/, '');
 }
 
 function renderWeekCard() {
   const remaining = latestWeekStatus.remaining;
   const solved = latestWeekStatus.solved;
   const total = remaining.length + solved.length;
-  const line = document.getElementById('weekLine');
+  const line = $('weekLine');
   if (!line) return;
   line.textContent = total === 0
     ? "No facts loaded yet — add facts, then shuffle to start a week."
     : `${total} fun facts in play this week`;
-  document.getElementById('weekBar').style.width = total === 0 ? '0%' : `${Math.round((solved.length / total) * 100)}%`;
-  document.getElementById('weekSolved').textContent = `${solved.length} solved`;
-  document.getElementById('weekRemaining').textContent = `${remaining.length} left`;
+  $('weekBar').style.width = total === 0 ? '0%' : `${Math.round((solved.length / total) * 100)}%`;
+  $('weekSolved').textContent = `${solved.length} played`;
+  $('weekRemaining').textContent = `${remaining.length} left`;
+}
+
+function renderLastRound() {
+  const el = $('lastRoundLine');
+  if (!el) return;
+  el.textContent = lastRound
+    ? (lastRound.solved
+        ? `Last round: ${lastRound.person}'s fact — guessed by ${lastRound.guesser}.`
+        : `Last round: ${lastRound.person}'s fact stumped the room — they win a prize.`)
+    : '';
 }
 
 function renderWinners(stumpRows, guesserRows) {
-  const stumpEl = document.getElementById('stumpList');
-  const guesserEl = document.getElementById('guesserList');
+  const stumpEl = $('stumpList'), guesserEl = $('guesserList');
   if (!stumpEl || !guesserEl) return;
 
   stumpRows.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -762,15 +989,48 @@ function renderWinners(stumpRows, guesserRows) {
     : `<div class="board-empty">No correct guesses yet.</div>`;
 }
 
-function drawWheel(names) {
-  const canvas = document.getElementById('wheel');
+// ---------- the wheel: every slice shows (a shortened) fun fact from this week's rotation ----------
+function wrapFact(ctx, text, maxW, maxLines) {
+  const words = String(text).trim().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const test = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(test).width <= maxW) cur = test;
+    else { if (cur) lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] += '…';
+  }
+  return lines.map(l => {
+    let s = l;
+    while (ctx.measureText(s).width > maxW && s.length > 2) s = s.replace(/.(…)?$/, '') + '…';
+    return s;
+  });
+}
+
+function drawWheel() {
+  const canvas = $('wheel');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const size = canvas.width, center = size / 2, radius = center - 6;
+  const size = canvas.width, k = size / 600, center = size / 2, radius = center - 6 * k;
   ctx.clearRect(0, 0, size, size);
-  if (!names.length) return;
-  const sliceAngle = (2 * Math.PI) / names.length;
-  names.forEach((_, i) => {
+  const names = orderedRemaining();
+  const n = names.length;
+  if (!n) return;
+
+  const sliceAngle = (2 * Math.PI) / n;
+  const fs = (n <= 4 ? 34 : n <= 8 ? 28 : 23) * k;
+  const maxLines = n <= 4 ? 3 : 2;
+  const lh = fs * 1.12;
+  const outer = radius - 18 * k;
+  // keep the text block inside its wedge: the wedge narrows toward the hub
+  const rMin = Math.max(radius * 0.3, (lh * maxLines + 8 * k) * n / (2 * Math.PI));
+  const maxW = Math.max(60 * k, outer - rMin);
+
+  names.forEach((name, i) => {
     const startAngle = i * sliceAngle, endAngle = startAngle + sliceAngle;
     ctx.beginPath();
     ctx.moveTo(center, center);
@@ -779,35 +1039,45 @@ function drawWheel(names) {
     ctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length];
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * k;
     ctx.stroke();
+
     ctx.save();
     ctx.translate(center, center);
     ctx.rotate(startAngle + sliceAngle / 2);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#180f33';
-    ctx.font = "bold 22px 'Fredoka', sans-serif";
-    ctx.fillText('🎉 Fun Fact', radius - 18, 7);
+    ctx.font = `700 ${fs}px 'Fredoka', 'Work Sans', sans-serif`;
+    const fact = latestMix[name];
+    const lines = fact ? wrapFact(ctx, fact, maxW, maxLines) : ['🎉 Fun Fact'];
+    const y0 = -((lines.length - 1) * lh) / 2;
+    lines.forEach((line, li) => ctx.fillText(line, outer, y0 + li * lh + fs * 0.35));
     ctx.restore();
   });
 }
 
+// ---------- a round: spin -> guess (60s) -> story time ----------
 async function spinHost() {
-  const remaining = latestWeekStatus.remaining;
-  if (hostSpinning || roundIsOpen() || remaining.length === 0) return;
+  const order = orderedRemaining();
+  if (hostSpinning || roundIsOpen() || phase === 'story' || order.length === 0) return;
   hostSpinning = true;
+  phase = 'spinning';
+  logRows = []; logHighlight = null;
+  hideTimer();
+  showGuessLog(true);
+  renderGuessLog();
   updateSpinButtons();
-  document.getElementById('roundStatus').textContent = "Spinning…";
-  document.getElementById('roundFact').textContent = '';
+  $('roundStatus').textContent = "Spinning…";
+  $('roundFact').textContent = '';
   Music.unlock(); // must happen inside the click so the browser lets the tune start later
 
-  const canvas = document.getElementById('wheel');
+  const canvas = $('wheel');
   canvas.style.transition = 'transform 6s cubic-bezier(.17,.67,.12,.99)';
   void canvas.offsetWidth;
 
-  const sliceAngle = 360 / remaining.length;
-  const winnerIndex = Math.floor(Math.random() * remaining.length);
-  const winnerName = remaining[winnerIndex];
+  const sliceAngle = 360 / order.length;
+  const winnerIndex = Math.floor(Math.random() * order.length);
+  const winnerName = order[winnerIndex];
   const randomOffset = Math.random() * (sliceAngle * 0.8) + sliceAngle * 0.1;
   const targetAngle = (270 - (winnerIndex * sliceAngle + randomOffset) + 3600) % 360;
   const extraSpins = 7 + Math.floor(Math.random() * 3);
@@ -821,7 +1091,9 @@ async function spinHost() {
     const { data: mixRow, error } = await sb.from('ff_week_mix').select('mapping').eq('id', true).single();
     if (error || !mixRow) {
       toast("Couldn't load this week's facts — try logging in again.");
-      hostSpinning = false;
+      hostSpinning = false; phase = 'idle';
+      showGuessLog(false);
+      $('roundStatus').textContent = 'Ready when you are.';
       updateSpinButtons();
       return;
     }
@@ -830,16 +1102,24 @@ async function spinHost() {
     currentRound = { roundId, activePerson: winnerName, factText, resolved: false };
 
     await sb.from('ff_round_secret').update({ round_id: roundId, active_person: winnerName, fact_text: factText }).eq('id', true);
-    await sb.from('ff_round').update({ round_id: roundId, status: 'open', fact_text: factText, candidates: remaining, winner: null, solved_identity: null }).eq('id', true);
+    await sb.from('ff_round').update({ round_id: roundId, status: 'open', fact_text: factText, candidates: latestWeekStatus.remaining, winner: null, solved_identity: null }).eq('id', true);
 
-    document.getElementById('roundStatus').textContent = "🕵️ Guessing is open!";
-    document.getElementById('roundFact').textContent = `"${factText}"`;
+    $('roundStatus').textContent = "🕵️ Guessing is open!";
+    $('roundFact').textContent = `"${factText}"`;
 
     hostSpinning = false;
+    phase = 'guessing';
+    renderGuessLog();
     updateSpinButtons();
     watchGuessesForRound(roundId);
+    startRoundTimer(roundStartFromId(roundId));
     Music.start();
   }, 6100);
+}
+
+function onNobodyBtn() {
+  if (phase === 'story') finishStory();
+  else if (roundIsOpen()) resolveRound(false, null, 'manual');
 }
 
 function watchGuessesForRound(roundId) {
@@ -854,48 +1134,75 @@ function watchGuessesForRound(roundId) {
 async function checkGuesses(roundId) {
   if (!currentRound || currentRound.roundId !== roundId || currentRound.resolved) return;
   const { data } = await sb.from('ff_guesses').select('*').eq('round_id', roundId);
+  logRows = (data || []).slice().sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  renderGuessLog();
   let best = null;
-  (data || []).forEach(g => {
+  logRows.forEach(g => {
     // The person whose fact it is can't win their own round, however they guess.
     if (g.guesser === currentRound.activePerson || g.guess !== currentRound.activePerson) return;
-    if (!best || g.ts < best.ts) best = g;
+    if (!best) best = g; // logRows is already in arrival order
   });
-  if (best) resolveRound(true, best.guesser);
+  if (best) resolveRound(true, best.guesser, 'correct');
 }
 
-async function resolveRound(solved, winnerGuesser) {
+async function resolveRound(solved, winnerGuesser, reason) {
   if (!currentRound || currentRound.resolved) return;
   currentRound.resolved = true;
+  stopRoundTimer();
   Music.stop();
+  if (reason === 'timeout') Music.buzz();
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   updateSpinButtons();
-
-  const { data: ws } = await sb.from('ff_week_status').select('*').eq('id', true).single();
-  let remaining = ws.remaining || [], solvedList = ws.solved || [];
   const round = currentRound;
 
+  // one last look at the guesses so the log is complete before they're cleaned up
+  const { data: finalGuesses } = await sb.from('ff_guesses').select('*').eq('round_id', round.roundId);
+  if (finalGuesses) logRows = finalGuesses.slice().sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  logHighlight = solved ? { guesser: winnerGuesser, guess: round.activePerson } : null;
+  renderGuessLog();
+
+  const { data: ws } = await sb.from('ff_week_status').select('*').eq('id', true).single();
+  const wsRow = ws || { remaining: [], solved: [] };
+  // Either way this fun fact is used up: it leaves the wheel for the rest of the week.
+  const remaining = (wsRow.remaining || []).filter(n => n !== round.activePerson);
+  const solvedList = [...(wsRow.solved || []), round.activePerson];
+
   if (solved) {
-    remaining = remaining.filter(n => n !== round.activePerson);
-    solvedList = [...solvedList, round.activePerson];
     await sb.from('ff_round').update({ status: 'solved', winner: winnerGuesser, solved_identity: round.activePerson }).eq('id', true);
     await bumpScoreboard(winnerGuesser);
-    document.getElementById('roundStatus').textContent = `🎉 It was ${round.activePerson}! ${winnerGuesser} guessed it first!`;
-    document.getElementById('roundFact').textContent = `"${round.factText}"`;
+    $('roundStatus').textContent = `🎉 It was ${round.activePerson}! ${winnerGuesser} guessed it first!`;
     launchConfetti();
   } else {
-    // Stumped the room: the owner earns a prize, recorded below the fold only. The name is
-    // never put on this (shared) screen and the fact stays in the pool.
+    // Stumped the room: the owner earns a prize, recorded in the hidden host controls only.
+    // Their name stays off this shared screen; they'll speak up for their own story.
     await sb.from('ff_round').update({ status: 'closed_unsolved' }).eq('id', true);
     await bumpUnguessed(round.activePerson);
-    document.getElementById('roundStatus').textContent = "😮 Nobody got it — that fun fact stays in the mystery pile!";
-    document.getElementById('roundFact').textContent = '';
+    $('roundStatus').textContent = "😮 Nobody got it! Fun fact owner, share the story if you'd like.";
   }
+  $('roundFact').textContent = `"${round.factText}"`;
 
   await sb.from('ff_week_status').update({ remaining, solved: solvedList }).eq('id', true);
   await sb.from('ff_guesses').delete().eq('round_id', round.roundId);
 
+  lastRound = { person: round.activePerson, fact: round.factText, solved, guesser: winnerGuesser };
   currentRound = null;
+  phase = 'story';
+  showStoryPill();
+  renderLastRound();
+  updateSpinButtons();
   await Promise.all([refreshWeekStatus(), refreshWinners()]);
+}
+
+// Story time is over: back to the How to play card, ready for the next spin.
+function finishStory() {
+  if (phase !== 'story') return;
+  phase = 'idle';
+  hideTimer();
+  showGuessLog(false);
+  const left = latestWeekStatus.remaining.length;
+  $('roundStatus').textContent = left ? 'Ready when you are.' : "🏁 That's every fun fact for this week!";
+  $('roundFact').textContent = '';
+  updateSpinButtons();
 }
 
 async function bumpScoreboard(name) {
@@ -912,7 +1219,7 @@ async function bumpUnguessed(name) {
 }
 
 async function shuffleWeek() {
-  if (roundIsOpen() && !confirm("A round is still open. Shuffling will cancel it. Continue?")) return;
+  if ((roundIsOpen() || phase === 'story') && !confirm("A round is still in progress. Shuffling will end it. Continue?")) return;
 
   const { data: factsRows } = await sb.from('ff_facts').select('*');
   const bank = {};
@@ -930,14 +1237,19 @@ async function shuffleWeek() {
 
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   Music.stop();
-  currentRound = null;
+  stopRoundTimer();
+  hideTimer();
+  showGuessLog(false);
+  currentRound = null; phase = 'idle'; lastRound = null;
+  renderLastRound();
 
-  await sb.from('ff_week_mix').update({ mapping, generated_at: new Date().toISOString() }).eq('id', true);
-  await sb.from('ff_week_status').update({ remaining, solved: [], generated_at: new Date().toISOString() }).eq('id', true);
+  const stamp = new Date().toISOString();
+  await sb.from('ff_week_mix').update({ mapping, generated_at: stamp }).eq('id', true);
+  await sb.from('ff_week_status').update({ remaining, solved: [], generated_at: stamp }).eq('id', true);
   await sb.from('ff_round').update({ status: 'idle', round_id: null, fact_text: null, candidates: [], winner: null, solved_identity: null }).eq('id', true);
 
-  document.getElementById('roundStatus').textContent = "This week's mix is ready — spin when you are!";
-  document.getElementById('roundFact').textContent = '';
+  $('roundStatus').textContent = "This week's mix is ready — spin when you are!";
+  $('roundFact').textContent = '';
   updateSpinButtons();
   toast(`Shuffled ${remaining.length} fun facts for this week.`);
 }
@@ -974,7 +1286,7 @@ async function openEditFacts() {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add('show'));
 
-  const rowsEl = document.getElementById('factRows');
+  const rowsEl = $('factRows');
   ALL_NAMES.forEach((name) => {
     const facts = bank[name] || ['', '', ''];
     const row = document.createElement('div');
@@ -989,11 +1301,11 @@ async function openEditFacts() {
   });
 
   function close() { overlay.classList.remove('show'); setTimeout(() => overlay.remove(), 250); }
-  document.getElementById('factCancel').addEventListener('click', close);
-  document.getElementById('factClear').addEventListener('click', () => {
+  $('factCancel').addEventListener('click', close);
+  $('factClear').addEventListener('click', () => {
     if (confirm("Empty every fun fact box? Nothing is deleted until you press Save.")) rowsEl.querySelectorAll('input').forEach(i => { i.value = ''; });
   });
-  document.getElementById('factSave').addEventListener('click', async () => {
+  $('factSave').addEventListener('click', async () => {
     const upserts = ALL_NAMES.map(name => {
       const inputs = rowsEl.querySelectorAll(`input[data-name="${CSS.escape(name)}"]`);
       const vals = Array.from(inputs).map(inp => inp.value.trim());
@@ -1009,9 +1321,6 @@ async function openEditFacts() {
 /* =====================================================================
    GUEST VIEW — guess only. No leaderboard, nothing that hints at answers.
    ===================================================================== */
-let guestRound = null;
-let myGuestName = localStorage.getItem('ffGuest.myName') || null;
-
 function initGuest() {
   document.body.classList.remove('host-mode');
   renderGuest();
@@ -1028,8 +1337,33 @@ async function refreshRound() {
   renderFactBanner();
 }
 
+// Guests count down too. It starts from the host's round clock unless this phone's clock is
+// wildly different, in which case it just counts from the moment the round appeared.
+function syncGuestTimer() {
+  const open = guestRound && guestRound.status === 'open';
+  if (!open) {
+    clearInterval(guestTimerInt); guestTimerInt = null; guestRoundKey = null;
+    return;
+  }
+  if (guestRoundKey !== guestRound.roundId) {
+    guestRoundKey = guestRound.roundId;
+    const fromId = roundStartFromId(guestRound.roundId);
+    const elapsed = (Date.now() - fromId) / 1000;
+    guestStartMs = (elapsed >= -3 && elapsed <= ROUND_SECONDS + 3) ? fromId : Date.now();
+  }
+  if (!guestTimerInt) guestTimerInt = setInterval(paintGuestTimer, 500);
+  paintGuestTimer();
+}
+function paintGuestTimer() {
+  const el = $('guestTimer');
+  if (!el) return;
+  const left = Math.max(0, ROUND_SECONDS - (Date.now() - guestStartMs) / 1000);
+  el.textContent = '⏱ ' + fmtClock(left);
+  el.classList.toggle('urgent', left <= 10);
+}
+
 function renderGuest() {
-  const app = document.getElementById('app');
+  const app = $('app');
   app.innerHTML = `
     <div class="top">
       <h1>🕵️ Crew Clues</h1>
@@ -1048,25 +1382,25 @@ function renderGuest() {
   renderIdentity();
   renderFactBanner();
 
-  document.getElementById('showHostLoginBtn').addEventListener('click', () => {
-    document.getElementById('hostLoginForm').classList.toggle('show');
+  $('showHostLoginBtn').addEventListener('click', () => {
+    $('hostLoginForm').classList.toggle('show');
   });
-  document.getElementById('passcodeSubmit').addEventListener('click', async () => {
-    const val = document.getElementById('passcodeInput').value;
+  $('passcodeSubmit').addEventListener('click', async () => {
+    const val = $('passcodeInput').value;
     if (!val) return;
     await hostLogin(val);
   });
-  document.getElementById('passcodeInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('passcodeSubmit').click();
+  $('passcodeInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('passcodeSubmit').click();
   });
 }
 
 function renderIdentity() {
-  const el = document.getElementById('identityPanel');
+  const el = $('identityPanel');
   if (!el) return;
   if (myGuestName) {
     el.innerHTML = `<div class="whoami">Playing as <strong>&nbsp;${esc(myGuestName)}</strong><button class="ghost" id="changeId">Change</button></div>`;
-    document.getElementById('changeId').addEventListener('click', () => { myGuestName = null; localStorage.removeItem('ffGuest.myName'); renderGuest(); });
+    $('changeId').addEventListener('click', () => { myGuestName = null; localStorage.removeItem('ffGuest.myName'); renderGuest(); });
   } else {
     el.innerHTML = `
       <div class="eyebrow">Who are you?</div>
@@ -1078,8 +1412,8 @@ function renderIdentity() {
         <button id="idGo">Let's go</button>
       </div>
     `;
-    document.getElementById('idGo').addEventListener('click', () => {
-      const v = document.getElementById('idSelect').value;
+    $('idGo').addEventListener('click', () => {
+      const v = $('idSelect').value;
       if (!v) return;
       myGuestName = v;
       localStorage.setItem('ffGuest.myName', v);
@@ -1089,8 +1423,9 @@ function renderIdentity() {
 }
 
 function renderFactBanner() {
-  const el = document.getElementById('factBanner');
+  const el = $('factBanner');
   if (!el) return;
+  syncGuestTimer();
 
   if (!guestRound || !guestRound.status || guestRound.status === 'idle') {
     el.innerHTML = `<div class="empty-note"><div class="big">⏳</div>Waiting for the host to spin the wheel…</div>`;
@@ -1102,35 +1437,42 @@ function renderFactBanner() {
         <div class="status">🎉 Solved!</div>
         <div class="name">${esc(guestRound.solvedIdentity)}</div>
         <div class="sub">${esc(guestRound.winner)} guessed it first!</div>
+        <div class="sub">🎤 Story time — ${esc(guestRound.solvedIdentity)} may share more about it.</div>
       </div>`;
     return;
   }
   if (guestRound.status === 'closed_unsolved') {
-    el.innerHTML = `<div class="empty-note"><div class="big">😮</div>Nobody got it this time — that fun fact goes back in the mystery pile!</div>`;
+    el.innerHTML = `<div class="empty-note"><div class="big">😮</div>Nobody got it! Whoever's fun fact that was may share the story now.</div>`;
     return;
   }
 
+  const timer = `<div class="guest-timer" id="guestTimer"></div>`;
+
   if (!myGuestName) {
-    el.innerHTML = `<div class="status">🕵️ A fun fact is up for grabs!</div><div class="fact-text">"${esc(guestRound.factText)}"</div><div class="sub">Pick your name above to guess.</div>`;
+    el.innerHTML = `${timer}<div class="status">🕵️ A fun fact is up for grabs!</div><div class="fact-text">"${esc(guestRound.factText)}"</div><div class="sub">Pick your name above to guess.</div>`;
+    paintGuestTimer();
     return;
   }
 
   const guessedName = localStorage.getItem('ffGuest.guessed.' + guestRound.roundId);
   if (guessedName) {
     el.innerHTML = `
+      ${timer}
       <div class="status">🕵️ Guessing is open</div>
       <div class="fact-text">"${esc(guestRound.factText)}"</div>
       <div class="sub">You guessed <strong>${esc(guessedName)}</strong> — waiting to see if you're right!</div>
     `;
+    paintGuestTimer();
     return;
   }
 
   el.innerHTML = `
+    ${timer}
     <div class="status">🕵️ Who's it about?</div>
     <div class="fact-text">"${esc(guestRound.factText)}"</div>
     <div class="guess-grid" id="guessGrid" style="margin-top:14px;"></div>
   `;
-  const grid = document.getElementById('guessGrid');
+  const grid = $('guessGrid');
   ALL_NAMES.forEach(name => {
     const btn = document.createElement('button');
     btn.className = 'guess-btn';
@@ -1138,6 +1480,7 @@ function renderFactBanner() {
     btn.addEventListener('click', () => submitGuess(name));
     grid.appendChild(btn);
   });
+  paintGuestTimer();
 }
 
 async function submitGuess(guessName) {
@@ -1146,7 +1489,8 @@ async function submitGuess(guessName) {
   if (localStorage.getItem('ffGuest.guessed.' + roundId)) return;
   localStorage.setItem('ffGuest.guessed.' + roundId, guessName);
   renderFactBanner();
-  const { error } = await sb.from('ff_guesses').insert({ round_id: roundId, guesser: myGuestName, guess: guessName, ts: new Date().toISOString() });
+  // no timestamp sent: the database stamps it on arrival, so "first" is decided by one clock
+  const { error } = await sb.from('ff_guesses').insert({ round_id: roundId, guesser: myGuestName, guess: guessName });
   // 23505 = this person already has a guess in for this round; that one stands.
   if (error && error.code !== '23505') {
     localStorage.removeItem('ffGuest.guessed.' + roundId);
