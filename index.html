@@ -747,12 +747,13 @@ function initHost() {
           <div class="bar"><div class="bar-fill" id="weekBar" style="width:0%"></div></div>
           <div class="counts"><span id="weekSolved">0 played</span><span id="weekRemaining">0 left</span></div>
           <div class="board-empty" id="lastRoundLine"></div>
+          <div class="board-empty">Miscounts from testing? <b>Start New Week</b> resets "played" to 0, puts every fun fact back on the wheel, and picks a fresh fact for each person.</div>
         </div>
         <div class="panel">
           <div class="eyebrow">Setup</div>
           <div class="admin-actions">
             <button id="editFactsBtn" class="ghost">✏️ Edit Fun Facts</button>
-            <button id="shuffleBtn" class="ghost">🔀 Shuffle This Week's Facts</button>
+            <button id="shuffleBtn" class="ghost">🔄 Start New Week (reset &amp; reshuffle)</button>
             <button id="resetScoreBtn" class="danger-ghost">Reset Winners</button>
             <button id="logoutBtn" class="ghost">Log out</button>
           </div>
@@ -1219,7 +1220,8 @@ async function bumpUnguessed(name) {
 }
 
 async function shuffleWeek() {
-  if ((roundIsOpen() || phase === 'story') && !confirm("A round is still in progress. Shuffling will end it. Continue?")) return;
+  if ((roundIsOpen() || phase === 'story') && !confirm("A round is still in progress. Starting a new week will end it. Continue?")) return;
+  if (latestWeekStatus.solved.length > 0 && !confirm(`Start a new week? All fun facts go back on the wheel and "${latestWeekStatus.solved.length} played" resets to 0. (Winners are kept — use Reset Winners for those.)`)) return;
 
   const { data: factsRows } = await sb.from('ff_facts').select('*');
   const bank = {};
