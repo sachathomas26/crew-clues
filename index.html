@@ -439,13 +439,6 @@ function roundStartFromId(id) {
   return Number.isFinite(n) ? n : Date.now();
 }
 
-// Stable pseudo-random order for the wheel. It depends only on the name and this week's
-// shuffle stamp, so slices never line up with the roster order and never move between redraws.
-function hashStr(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
 
 // ===================== STATE =====================
 let ROUND_SECONDS = 60;
@@ -461,8 +454,7 @@ let hostSpinning = false;
 let hostCurrentRotation = 0;
 let currentRound = null;
 let unsubGuesses = null;
-let latestWeekStatus = { remaining: [], solved: [], seed: '' };
-let latestMix = {};            // name -> this week's fact (host-only data)
+let week = { slots: [], pool: [], used: [] };   // host-only: on the wheel / in reserve / played this week
 let logRows = [];
 let logHighlight = null;
 let lastRound = null;
@@ -473,10 +465,64 @@ let guestRound = null;
 let myGuestName = localStorage.getItem('ffGuest.myName') || null;
 let guestTimerInt = null, guestRoundKey = null, guestStartMs = 0;
 
-function orderedRemaining() {
-  const seed = latestWeekStatus.seed || '';
-  return latestWeekStatus.remaining.slice().sort((a, b) =>
-    hashStr(a + '|' + seed) - hashStr(b + '|' + seed) || a.localeCompare(b));
+// ===================== THE WEEK: 24 WHEEL SPOTS DEALT FROM EVERYONE'S FACTS =====================
+const WHEEL_SLOTS = 24;
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Stored (host-only) as { v: 2, slots, pool, used }. Anything else means "no week dealt yet".
+function normalizeWeek(m) {
+  const ok = m && Array.isArray(m.slots) && Array.isArray(m.pool);
+  return ok
+    ? { slots: m.slots, pool: m.pool, used: Array.isArray(m.used) ? m.used : [] }
+    : { slots: [], pool: [], used: [] };
+}
+
+// Everyone gets one random fact on the wheel first, so nobody is left off. Their other facts wait
+// in reserve, and the spare spots are dealt at random from the reserve, so some people end up with 2 or 3.
+function buildWeek(bank) {
+  const slots = [], pool = [];
+  ALL_NAMES.forEach(name => {
+    const facts = shuffle([...new Set((bank[name] || []).map(f => String(f || '').trim()).filter(Boolean))]);
+    if (!facts.length) return;
+    slots.push({ name, fact: facts[0] });
+    facts.slice(1).forEach(fact => pool.push({ name, fact }));
+  });
+  shuffle(pool);
+  while (slots.length < WHEEL_SLOTS && pool.length) slots.push(pool.pop());
+  return { slots: shuffle(slots), pool, used: [] };
+}
+
+// A fact has been played: it's gone for the week. If that leaves its owner with nothing on the wheel
+// but they still have facts left, one of theirs steps in; otherwise a random unused fact fills the spot.
+function afterRound(w, done) {
+  const i = w.slots.findIndex(s => s.name === done.name && s.fact === done.fact);
+  if (i >= 0) w.slots.splice(i, 1);
+  w.used.push({ name: done.name, fact: done.fact });
+
+  let next = null;
+  if (!w.slots.some(s => s.name === done.name)) {
+    const mine = w.pool.filter(p => p.name === done.name);
+    if (mine.length) next = mine[Math.floor(Math.random() * mine.length)];
+  }
+  if (!next && w.pool.length) next = w.pool[Math.floor(Math.random() * w.pool.length)];
+  if (next) { w.pool.splice(w.pool.indexOf(next), 1); w.slots.push(next); }
+
+  shuffle(w.slots); // new positions every round, so a slice's place never hints at its owner
+  return w;
+}
+
+async function saveWeek(w) {
+  await sb.from('ff_week_mix').update({
+    mapping: { v: 2, slots: w.slots, pool: w.pool, used: w.used },
+    generated_at: new Date().toISOString(),
+  }).eq('id', true);
 }
 
 // ===================== SOUND =====================
@@ -656,7 +702,7 @@ function roundIsOpen() { return !!(currentRound && !currentRound.resolved); }
 
 function updateSpinButtons() {
   const spinBtn = $('spinBtn'), nobodyBtn = $('nobodyBtn');
-  if (spinBtn) spinBtn.disabled = hostSpinning || roundIsOpen() || phase === 'story' || latestWeekStatus.remaining.length === 0;
+  if (spinBtn) spinBtn.disabled = hostSpinning || roundIsOpen() || phase === 'story' || week.slots.length === 0;
   if (nobodyBtn) {
     nobodyBtn.disabled = !(roundIsOpen() || phase === 'story');
     nobodyBtn.textContent = phase === 'story' ? '✅ Next fun fact' : '🤷 Nobody Got It';
@@ -747,7 +793,7 @@ function initHost() {
           <div class="bar"><div class="bar-fill" id="weekBar" style="width:0%"></div></div>
           <div class="counts"><span id="weekSolved">0 played</span><span id="weekRemaining">0 left</span></div>
           <div class="board-empty" id="lastRoundLine"></div>
-          <div class="board-empty">Miscounts from testing? <b>Start New Week</b> resets "played" to 0, puts every fun fact back on the wheel, and picks a fresh fact for each person.</div>
+          <div class="board-empty">Miscounts from testing? <b>Start New Week</b> resets "played" to 0, puts every fun fact back in the pool, and deals a fresh 24 onto the wheel (everyone gets at least one).</div>
         </div>
         <div class="panel">
           <div class="eyebrow">Setup</div>
@@ -807,7 +853,7 @@ function initHost() {
   restoreOpenRound();
   // the wheel labels use the display font, so paint them again once it has loaded
   if (document.fonts && document.fonts.load) document.fonts.load("700 24px Fredoka").then(() => drawWheel());
-  trackChannel(sb.channel('host-week').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_week_status' }, refreshWeekStatus).subscribe());
+  trackChannel(sb.channel('host-week').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_week_mix' }, refreshWeekStatus).subscribe());
   trackChannel(sb.channel('host-winners')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_scoreboard' }, refreshWinners)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'ff_unguessed_prizes' }, refreshWinners)
@@ -909,14 +955,8 @@ async function restoreOpenRound() {
 }
 
 async function refreshWeekStatus() {
-  const [{ data: ws }, { data: mix }] = await Promise.all([
-    sb.from('ff_week_status').select('*').eq('id', true).maybeSingle(),
-    sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle(),
-  ]);
-  latestWeekStatus = ws
-    ? { remaining: ws.remaining || [], solved: ws.solved || [], seed: ws.generated_at || '' }
-    : { remaining: [], solved: [], seed: '' };
-  latestMix = (mix && mix.mapping) || {};
+  const { data } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
+  week = normalizeWeek(data && data.mapping);
   drawWheel();
   renderWeekCard();
   updateSpinButtons();
@@ -942,17 +982,15 @@ function buildQr() {
 }
 
 function renderWeekCard() {
-  const remaining = latestWeekStatus.remaining;
-  const solved = latestWeekStatus.solved;
-  const total = remaining.length + solved.length;
   const line = $('weekLine');
   if (!line) return;
+  const total = week.slots.length + week.pool.length + week.used.length;
   line.textContent = total === 0
-    ? "No facts loaded yet — add facts, then shuffle to start a week."
-    : `${total} fun facts in play this week`;
-  $('weekBar').style.width = total === 0 ? '0%' : `${Math.round((solved.length / total) * 100)}%`;
-  $('weekSolved').textContent = `${solved.length} played`;
-  $('weekRemaining').textContent = `${remaining.length} left`;
+    ? "No facts loaded yet — add facts, then start a new week."
+    : `${total} fun facts this week · ${week.slots.length} on the wheel`;
+  $('weekBar').style.width = total === 0 ? '0%' : `${Math.round((week.used.length / total) * 100)}%`;
+  $('weekSolved').textContent = `${week.used.length} played`;
+  $('weekRemaining').textContent = `${week.slots.length + week.pool.length} left`;
 }
 
 function renderLastRound() {
@@ -1018,20 +1056,20 @@ function drawWheel() {
   const ctx = canvas.getContext('2d');
   const size = canvas.width, k = size / 600, center = size / 2, radius = center - 6 * k;
   ctx.clearRect(0, 0, size, size);
-  const names = orderedRemaining();
-  const n = names.length;
+  const slots = week.slots;
+  const n = slots.length;
   if (!n) return;
 
   const sliceAngle = (2 * Math.PI) / n;
-  const fs = (n <= 4 ? 34 : n <= 8 ? 28 : 23) * k;
-  const maxLines = n <= 4 ? 3 : 2;
+  const fs = (n <= 4 ? 34 : n <= 8 ? 28 : n <= 16 ? 23 : 19) * k;
+  const maxLines = n <= 4 ? 3 : n <= 16 ? 2 : 1;
   const lh = fs * 1.12;
   const outer = radius - 18 * k;
   // keep the text block inside its wedge: the wedge narrows toward the hub
   const rMin = Math.max(radius * 0.3, (lh * maxLines + 8 * k) * n / (2 * Math.PI));
   const maxW = Math.max(60 * k, outer - rMin);
 
-  names.forEach((name, i) => {
+  slots.forEach((slot, i) => {
     const startAngle = i * sliceAngle, endAngle = startAngle + sliceAngle;
     ctx.beginPath();
     ctx.moveTo(center, center);
@@ -1049,8 +1087,7 @@ function drawWheel() {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#180f33';
     ctx.font = `700 ${fs}px 'Fredoka', 'Work Sans', sans-serif`;
-    const fact = latestMix[name];
-    const lines = fact ? wrapFact(ctx, fact, maxW, maxLines) : ['🎉 Fun Fact'];
+    const lines = slot.fact ? wrapFact(ctx, slot.fact, maxW, maxLines) : ['🎉 Fun Fact'];
     const y0 = -((lines.length - 1) * lh) / 2;
     lines.forEach((line, li) => ctx.fillText(line, outer, y0 + li * lh + fs * 0.35));
     ctx.restore();
@@ -1059,8 +1096,8 @@ function drawWheel() {
 
 // ---------- a round: spin -> guess (60s) -> story time ----------
 async function spinHost() {
-  const order = orderedRemaining();
-  if (hostSpinning || roundIsOpen() || phase === 'story' || order.length === 0) return;
+  if (hostSpinning || roundIsOpen() || phase === 'story' || week.slots.length === 0) return;
+  const slots = week.slots.slice();
   hostSpinning = true;
   phase = 'spinning';
   logRows = []; logHighlight = null;
@@ -1076,9 +1113,9 @@ async function spinHost() {
   canvas.style.transition = 'transform 6s cubic-bezier(.17,.67,.12,.99)';
   void canvas.offsetWidth;
 
-  const sliceAngle = 360 / order.length;
-  const winnerIndex = Math.floor(Math.random() * order.length);
-  const winnerName = order[winnerIndex];
+  const sliceAngle = 360 / slots.length;
+  const winnerIndex = Math.floor(Math.random() * slots.length);
+  const winner = slots[winnerIndex];
   const randomOffset = Math.random() * (sliceAngle * 0.8) + sliceAngle * 0.1;
   const targetAngle = (270 - (winnerIndex * sliceAngle + randomOffset) + 3600) % 360;
   const extraSpins = 7 + Math.floor(Math.random() * 3);
@@ -1089,24 +1126,14 @@ async function spinHost() {
   setTimeout(async () => {
     stopSpinTicks();
     Music.ding();
-    const { data: mixRow, error } = await sb.from('ff_week_mix').select('mapping').eq('id', true).single();
-    if (error || !mixRow) {
-      toast("Couldn't load this week's facts — try logging in again.");
-      hostSpinning = false; phase = 'idle';
-      showGuessLog(false);
-      $('roundStatus').textContent = 'Ready when you are.';
-      updateSpinButtons();
-      return;
-    }
-    const factText = (mixRow.mapping || {})[winnerName] || '(missing fact text)';
     const roundId = 'r' + Date.now();
-    currentRound = { roundId, activePerson: winnerName, factText, resolved: false };
+    currentRound = { roundId, activePerson: winner.name, factText: winner.fact, resolved: false };
 
-    await sb.from('ff_round_secret').update({ round_id: roundId, active_person: winnerName, fact_text: factText }).eq('id', true);
-    await sb.from('ff_round').update({ round_id: roundId, status: 'open', fact_text: factText, candidates: latestWeekStatus.remaining, winner: null, solved_identity: null }).eq('id', true);
+    await sb.from('ff_round_secret').update({ round_id: roundId, active_person: winner.name, fact_text: winner.fact }).eq('id', true);
+    await sb.from('ff_round').update({ round_id: roundId, status: 'open', fact_text: winner.fact, candidates: [], winner: null, solved_identity: null }).eq('id', true);
 
     $('roundStatus').textContent = "🕵️ Guessing is open!";
-    $('roundFact').textContent = `"${factText}"`;
+    $('roundFact').textContent = `"${winner.fact}"`;
 
     hostSpinning = false;
     phase = 'guessing';
@@ -1162,12 +1189,6 @@ async function resolveRound(solved, winnerGuesser, reason) {
   logHighlight = solved ? { guesser: winnerGuesser, guess: round.activePerson } : null;
   renderGuessLog();
 
-  const { data: ws } = await sb.from('ff_week_status').select('*').eq('id', true).single();
-  const wsRow = ws || { remaining: [], solved: [] };
-  // Either way this fun fact is used up: it leaves the wheel for the rest of the week.
-  const remaining = (wsRow.remaining || []).filter(n => n !== round.activePerson);
-  const solvedList = [...(wsRow.solved || []), round.activePerson];
-
   if (solved) {
     await sb.from('ff_round').update({ status: 'solved', winner: winnerGuesser, solved_identity: round.activePerson }).eq('id', true);
     await bumpScoreboard(winnerGuesser);
@@ -1182,7 +1203,11 @@ async function resolveRound(solved, winnerGuesser, reason) {
   }
   $('roundFact').textContent = `"${round.factText}"`;
 
-  await sb.from('ff_week_status').update({ remaining, solved: solvedList }).eq('id', true);
+  // Either way this fun fact is used up for the week; the wheel refills from everyone's reserve.
+  const { data: mixRow } = await sb.from('ff_week_mix').select('mapping').eq('id', true).maybeSingle();
+  const w = normalizeWeek(mixRow && mixRow.mapping);
+  afterRound(w, { name: round.activePerson, fact: round.factText });
+  await saveWeek(w);
   await sb.from('ff_guesses').delete().eq('round_id', round.roundId);
 
   lastRound = { person: round.activePerson, fact: round.factText, solved, guesser: winnerGuesser };
@@ -1200,7 +1225,7 @@ function finishStory() {
   phase = 'idle';
   hideTimer();
   showGuessLog(false);
-  const left = latestWeekStatus.remaining.length;
+  const left = week.slots.length;
   $('roundStatus').textContent = left ? 'Ready when you are.' : "🏁 That's every fun fact for this week!";
   $('roundFact').textContent = '';
   updateSpinButtons();
@@ -1221,21 +1246,14 @@ async function bumpUnguessed(name) {
 
 async function shuffleWeek() {
   if ((roundIsOpen() || phase === 'story') && !confirm("A round is still in progress. Starting a new week will end it. Continue?")) return;
-  if (latestWeekStatus.solved.length > 0 && !confirm(`Start a new week? All fun facts go back on the wheel and "${latestWeekStatus.solved.length} played" resets to 0. (Winners are kept — use Reset Winners for those.)`)) return;
+  if (week.used.length > 0 && !confirm(`Start a new week? Every fun fact goes back in the pool, a fresh ${WHEEL_SLOTS} are dealt onto the wheel, and "${week.used.length} played" resets to 0. (Winners are kept — use Reset Winners for those.)`)) return;
 
   const { data: factsRows } = await sb.from('ff_facts').select('*');
   const bank = {};
   (factsRows || []).forEach(r => { bank[r.name] = [r.fact1, r.fact2, r.fact3]; });
 
-  const mapping = {};
-  const remaining = [];
-  ALL_NAMES.forEach(name => {
-    const facts = (bank[name] || []).filter(f => f && f.trim());
-    if (!facts.length) return;
-    mapping[name] = facts[Math.floor(Math.random() * facts.length)];
-    remaining.push(name);
-  });
-  if (!remaining.length) { toast("Add some fun facts first!"); return; }
+  const fresh = buildWeek(bank);
+  if (!fresh.slots.length) { toast("Add some fun facts first!"); return; }
 
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   Music.stop();
@@ -1246,14 +1264,18 @@ async function shuffleWeek() {
   renderLastRound();
 
   const stamp = new Date().toISOString();
-  await sb.from('ff_week_mix').update({ mapping, generated_at: stamp }).eq('id', true);
-  await sb.from('ff_week_status').update({ remaining, solved: [], generated_at: stamp }).eq('id', true);
+  await sb.from('ff_week_mix').update({ mapping: { v: 2, slots: fresh.slots, pool: fresh.pool, used: [] }, generated_at: stamp }).eq('id', true);
+  // the public status row no longer carries any names
+  await sb.from('ff_week_status').update({ remaining: [], solved: [], generated_at: stamp }).eq('id', true);
   await sb.from('ff_round').update({ status: 'idle', round_id: null, fact_text: null, candidates: [], winner: null, solved_identity: null }).eq('id', true);
 
+  week = fresh;
+  drawWheel();
+  renderWeekCard();
   $('roundStatus').textContent = "This week's mix is ready — spin when you are!";
   $('roundFact').textContent = '';
   updateSpinButtons();
-  toast(`Shuffled ${remaining.length} fun facts for this week.`);
+  toast(`Dealt ${fresh.slots.length} fun facts onto the wheel (${fresh.pool.length} more in reserve).`);
 }
 
 async function resetWinners() {
