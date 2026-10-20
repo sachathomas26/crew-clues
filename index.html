@@ -417,6 +417,29 @@
   .fact-banner .mine { margin: 12px 0 4px; font-weight: 700; font-size: 1.1rem; }
   .fact-banner .mine.ok { color: var(--good); }
   .fact-banner .mine.bad { color: var(--accent-2); }
+  .reveal-card { text-align: center; align-items: center; max-width: 440px; gap: 6px; }
+  .reveal-card .big { font-size: 3rem; }
+  .reveal-card button { margin-top: 14px; font-size: 1.3rem; padding: 16px 34px; }
+  .reveal-card button.ghost { font-size: 1rem; padding: 10px 22px; margin-top: 8px; }
+
+  /* the fun fact, very large, over the wheel and the QR code */
+  .presenter-grid { position: relative; }
+  .fact-over {
+    position: absolute; z-index: 8; top: 0; right: 0; display: flex; flex-direction: column;
+    padding: clamp(18px, 3vh, 36px) clamp(20px, 3vw, 44px); border-radius: 22px; overflow: hidden;
+    background: linear-gradient(135deg, rgba(36,26,77,.98), rgba(68,35,128,.98));
+    border: 1px solid rgba(255,182,72,.45); box-shadow: 0 20px 60px var(--shadow), 0 0 0 6px rgba(255,255,255,.04);
+  }
+  .fo-body { flex: 1; min-height: 0; display: flex; flex-direction: column; text-align: center; gap: clamp(8px, 2vh, 20px); }
+  .fo-label { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: clamp(1.4rem, 4vh, 2.6rem); color: var(--accent); }
+  .fo-fact { flex: 1; min-height: 0; display: flex; font-family: 'Fredoka', sans-serif; font-weight: 600; line-height: 1.15; text-wrap: balance; }
+  .fo-text { margin: auto; }
+  .fo-foot { font-family: 'Space Mono', 'Courier New', monospace; font-weight: 700; font-size: clamp(1.05rem, 3vh, 1.9rem); color: var(--text); overflow-wrap: anywhere; }
+  .fo-toggle { position: absolute; top: 12px; right: 14px; z-index: 2; padding: 6px 12px; font-size: .78rem; background: rgba(255,255,255,.08); color: var(--text-dim); border: 1px solid var(--panel-line); box-shadow: none; }
+  .fact-over.min { height: auto !important; left: auto !important; background: none; border: none; box-shadow: none; padding: 0; overflow: visible; }
+  .fact-over.min .fo-body { display: none; }
+  .fact-over.min .fo-toggle { position: static; }
+  @media (max-width: 1000px) { .fact-over { position: relative; order: -2; height: auto !important; left: auto !important; min-height: 46vh; } }
   .final-name { font-family: 'Fredoka', sans-serif; font-size: 1.9rem; font-weight: 700; color: var(--accent); margin: 4px 0; }
 </style>
 </head>
@@ -469,6 +492,11 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function fmtClock(secs) {
+  const s = Math.max(0, Math.ceil(secs));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 // round ids are 'r' + the host's clock at the moment guessing opened
 function roundStartFromId(id) {
   const n = parseInt(String(id).replace(/\D/g, ''), 10);
@@ -478,6 +506,7 @@ function roundStartFromId(id) {
 
 // ===================== STATE =====================
 const STALE_ROUND_MS = 12 * 60 * 60 * 1000;   // an "open" round older than this is left over from an earlier meeting
+const ROUND_SECONDS = 90;                      // guessing time once the wheel has landed
 
 let isHost = false;
 let activeChannels = [];
@@ -495,11 +524,13 @@ let logRows = [];
 let logReveal = null;           // null while guessing; { solved, owner, first } once the answer is out
 let lastRound = null;
 let lastWinnerRows = { stump: [], guessers: [] };
+let roundTimerInt = null;
 
 // guest
 let guestRound = null;
 let myGuestName = localStorage.getItem('ffGuest.myName') || null;
 let ownerCheck = { roundId: null, name: null, isOwner: false };   // does the open round belong to THIS phone's name?
+let guestTimerInt = null, guestRoundKey = null, guestStartMs = 0;
 
 // ===================== WHO'S PLAYING (names people have claimed on their phones) =====================
 let rosterRows = [];   // [{ name, claimed, sort_order }]
@@ -763,6 +794,9 @@ async function hostLogout() {
 function resetHostRuntime() {
   Music.stop();
   stopSpinTicks();
+  stopRoundTimer();
+  hideRevealPopup();
+  clearInterval(guestTimerInt); guestTimerInt = null; guestRoundKey = null;
   clearChannels();
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   phase = 'idle'; hostSpinning = false; currentRound = null;
@@ -824,14 +858,22 @@ function initHost() {
       </div>
 
       <div class="presenter-grid">
+        <div class="fact-over" id="factOver" hidden>
+          <button class="fo-toggle" id="foToggle">🎡 Show wheel &amp; QR</button>
+          <div class="fo-body">
+            <div class="fo-label" id="foLabel"></div>
+            <div class="fo-fact" id="foFact"><span class="fo-text" id="foText"></span></div>
+            <div class="fo-foot" id="foFoot"></div>
+          </div>
+        </div>
         <div class="panel side-card left-card">
           <div class="pane howto" id="howTo">
             <div class="eyebrow">How to play</div>
             <ol class="steps">
               <li class="step"><div class="ico">📱</div><div><b>Scan the code</b><span>Point your phone at the QR code. No login needed.</span></div></li>
-              <li class="step"><div class="ico">🕵️</div><div><b>Pick who it is</b><span>Tap the name you think the fun fact belongs to. One guess each, so lock it in!</span></div></li>
+              <li class="step"><div class="ico">🕵️</div><div><b>Pick who it is</b><span>Tap the name you think the fun fact belongs to. One guess each, and you have 90 seconds.</span></div></li>
               <li class="step"><div class="ico">🎁</div><div><b>Win a prize</b><span>If nobody guesses your fun fact, you stump everyone and win a prize.</span></div></li>
-              <li class="step"><div class="ico">⚡</div><div><b>Be the fastest</b><span>Everyone who guesses right scores. The first correct guess earns the ⭐.</span></div></li>
+              <li class="step"><div class="ico">⚡</div><div><b>Be the fastest</b><span>Everyone who guesses right scores a point. Most points wins a prize.</span></div></li>
             </ol>
           </div>
           <div class="pane guesslog" id="guessLog" hidden>
@@ -924,6 +966,14 @@ function initHost() {
   }
 
   buildQr();
+  $('foToggle').addEventListener('click', () => {
+    const box = $('factOver');
+    box.classList.toggle('min');
+    syncFoToggle();
+    if (!box.classList.contains('min')) { positionFactOver(); fitFactText(); }
+  });
+  if (window.ResizeObserver) new ResizeObserver(() => fitFactText()).observe($('factOver'));
+  if (!window.__foResize) { window.__foResize = true; window.addEventListener('resize', () => { positionFactOver(); fitFactText(); }); }
 
   const adminPanel = $('adminPanel'), hostToggle = $('hostToggle');
   hostToggle.addEventListener('click', () => {
@@ -1007,11 +1057,10 @@ function renderGuessLog() {
     const rows = logRows.filter(g => g.guesser !== owner);
     const right = rows.filter(g => g.guess === owner), wrong = rows.filter(g => g.guess !== owner);
     list.innerHTML = [...right, ...wrong].map(g => {
-      const ok = g.guess === owner, first = ok && g.guesser === logReveal.first;
-      return `<li class="log-item${first ? ' first' : ''}${ok ? '' : ' wrong'}">
+      const ok = g.guess === owner;
+      return `<li class="log-item${ok ? ' first' : ' wrong'}">
         ${av(g.guesser)}
         <span class="msg">${ok ? `<b>${esc(g.guesser)}</b> got it ✅` : `<b>${esc(g.guesser)}</b> guessed <em>${esc(g.guess)}</em>`}</span>
-        ${first ? '<span class="badge">⭐ First!</span>' : ''}
       </li>`;
     }).join('');
   } else {
@@ -1026,13 +1075,15 @@ function renderGuessLog() {
 // ---------- progress pill (replaces the old countdown) ----------
 function paintProgress() {
   const pill = $('roundTimer'), bar = $('timerBar'), fill = $('timerFill');
-  if (!pill) return;
-  const total = currentRound ? currentRound.players.length : 0, n = lockedCount();
-  pill.hidden = false;
-  pill.classList.remove('story', 'urgent');
-  pill.textContent = total ? `✋ ${n} / ${total} locked in` : `✋ ${n} locked in`;
-  bar.hidden = !total;
-  fill.style.width = total ? Math.min(100, n / total * 100) + '%' : '0%';
+  if (pill && currentRound) {
+    const left = roundLeft();
+    pill.hidden = false; bar.hidden = false;
+    pill.classList.remove('story');
+    if (currentRound.allIn) { pill.textContent = '✅ All locked in'; pill.classList.remove('urgent'); fill.style.width = '100%'; }
+    else if (currentRound.timeUp || left <= 0) { pill.textContent = "⏱ Time's up"; pill.classList.add('urgent'); fill.style.width = '0%'; }
+    else { pill.textContent = '⏱ ' + fmtClock(left); pill.classList.toggle('urgent', left <= 10); fill.style.width = (left / ROUND_SECONDS * 100) + '%'; }
+  }
+  paintFactOver();
 }
 function showStoryPill() {
   const pill = $('roundTimer'), bar = $('timerBar');
@@ -1070,6 +1121,7 @@ async function restoreOpenRound() {
   $('roundFact').textContent = `"${sec.fact_text}"`;
   updateSpinButtons();
   watchGuessesForRound(pub.round_id);
+  startRoundTimer();
 }
 
 async function refreshWeekStatus() {
@@ -1087,7 +1139,7 @@ async function refreshWinners() {
   ]);
   renderWinners(
     (stumps || []).filter(r => r.count > 0).map(r => ({ name: r.name, count: r.count })),
-    (guessers || []).filter(r => r.correct_guesses > 0).map(r => ({ name: r.name, correctGuesses: r.correct_guesses, firstGuesses: r.first_guesses || 0 }))
+    (guessers || []).filter(r => r.correct_guesses > 0).map(r => ({ name: r.name, correctGuesses: r.correct_guesses }))
   );
 }
 
@@ -1116,7 +1168,7 @@ function renderLastRound() {
   if (!el) return;
   if (!lastRound) { el.textContent = ''; return; }
   el.textContent = lastRound.solved
-    ? `Last round: ${lastRound.person}'s fact. ⭐ First: ${lastRound.first}${lastRound.others.length ? ' · also right: ' + lastRound.others.join(', ') : ''}.`
+    ? `Last round: ${lastRound.person}'s fact. Got it: ${lastRound.winners.join(', ')}.`
     : `Last round: ${lastRound.person}'s fact stumped the room, so they win a prize.`;
 }
 
@@ -1134,14 +1186,13 @@ function renderWinners(stumpRows, guesserRows) {
         </li>`).join('')
     : `<div class="board-empty">Nobody has stumped the room yet.</div>`;
 
-  // most correct guesses leads; times they were first breaks a tie
-  guesserRows.sort((a, b) => b.correctGuesses - a.correctGuesses || b.firstGuesses - a.firstGuesses || a.name.localeCompare(b.name));
+  // everyone who guesses a fun fact right scores the same; most correct guesses leads
+  guesserRows.sort((a, b) => b.correctGuesses - a.correctGuesses || a.name.localeCompare(b.name));
   guesserEl.innerHTML = guesserRows.length
     ? guesserRows.map((r, i) => `
         <li class="board-row">
           <span class="rank">${i + 1}</span>
           <span class="who">${esc(r.name)}</span>
-          <span class="prize">⭐ ${r.firstGuesses} first</span>
           <span class="score tnum">${r.correctGuesses}</span>
         </li>`).join('')
     : `<div class="board-empty">No correct guesses yet.</div>`;
@@ -1153,13 +1204,9 @@ function openFinalResults() {
   const g = lastWinnerRows.guessers, stumps = lastWinnerRows.stump;
   let headline = 'No correct guesses yet.', note = '';
   if (g.length) {
-    const tied = g.filter(r => r.correctGuesses === g[0].correctGuesses);
-    const maxFirst = Math.max(...tied.map(r => r.firstGuesses));
-    const champs = tied.filter(r => r.firstGuesses === maxFirst);
+    const champs = g.filter(r => r.correctGuesses === g[0].correctGuesses);
     headline = champs.map(r => r.name).join(' & ');
-    if (tied.length > 1 && champs.length === 1) note = `Tied on ${g[0].correctGuesses} correct guesses. Won the tie-break with the most first-place finishes (${maxFirst}).`;
-    else if (champs.length > 1) note = `Dead heat: ${g[0].correctGuesses} correct guesses and ${maxFirst} first-place finishes each. Co-winners.`;
-    else note = `${g[0].correctGuesses} correct guesses, ${g[0].firstGuesses} of them first.`;
+    note = champs.length > 1 ? `Tied with ${g[0].correctGuesses} correct guesses each. Co-winners.` : `${g[0].correctGuesses} correct guesses.`;
   }
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
@@ -1173,7 +1220,7 @@ function openFinalResults() {
         <div class="fact-row"><div class="eyebrow">🎁 Stumped the room, each wins a prize</div>
           ${stumps.length ? stumps.map(r => `<div class="board-row"><span class="who">${esc(r.name)}</span><span class="prize">🎁 × ${r.count}</span></div>`).join('') : '<div class="board-empty">Nobody stumped the room.</div>'}</div>
         <div class="fact-row"><div class="eyebrow">Full standings</div>
-          ${g.length ? g.map((r, i) => `<div class="board-row"><span class="rank">${i + 1}</span><span class="who">${esc(r.name)}</span><span class="prize">⭐ ${r.firstGuesses} first</span><span class="score tnum">${r.correctGuesses}</span></div>`).join('') : '<div class="board-empty">No guesses scored.</div>'}</div>
+          ${g.length ? g.map((r, i) => `<div class="board-row"><span class="rank">${i + 1}</span><span class="who">${esc(r.name)}</span><span class="score tnum">${r.correctGuesses}</span></div>`).join('') : '<div class="board-empty">No guesses scored.</div>'}</div>
       </div>
       <div class="edit-actions"><button id="finalClose">Close</button></div>
     </div>`;
@@ -1256,6 +1303,7 @@ async function spinHost() {
   phase = 'spinning';
   logRows = []; logReveal = null;
   hideTimer();
+  paintFactOver();
   showGuessLog(true);
   renderGuessLog();
   updateSpinButtons();
@@ -1298,10 +1346,13 @@ async function spinHost() {
     hostSpinning = false;
     phase = 'guessing';
     renderGuessLog();
-    paintProgress();
     updateSpinButtons();
     watchGuessesForRound(roundId);
-    Music.start();
+    Music.unlock();
+    Music.start();                      // the guessing tune plays while people lock in
+    $('factOver').classList.remove('min');
+    syncFoToggle();
+    startRoundTimer();
   }, 6100);
 }
 
@@ -1332,12 +1383,124 @@ async function checkGuesses(roundId) {
   renderGuessLog();
   paintProgress();
   const ps = currentRound.players;
-  if (ps.length && ps.every(p => logRows.some(g => g.guesser === p))) resolveRound('complete');
+  if (ps.length && ps.every(p => logRows.some(g => g.guesser === p)) && !currentRound.allIn) {
+    currentRound.allIn = true;
+    Music.stop();
+    stopRoundTimer();
+    paintProgress();
+    showRevealPopup('all');
+  }
 }
+
+// ---------- 90-second guessing clock ----------
+function roundLeft() {
+  return currentRound ? Math.max(0, ROUND_SECONDS - (Date.now() - roundStartFromId(currentRound.roundId)) / 1000) : 0;
+}
+function startRoundTimer() {
+  stopRoundTimer();
+  const tick = () => {
+    if (!roundIsOpen()) { stopRoundTimer(); return; }
+    if (!currentRound.allIn && !currentRound.timeUp && roundLeft() <= 0) {
+      // time is up: the host still decides when to reveal
+      currentRound.timeUp = true;
+      Music.stop();
+      Music.buzz();
+      showRevealPopup('time');
+    }
+    paintProgress();
+  };
+  tick();
+  if (roundIsOpen()) roundTimerInt = setInterval(tick, 250);
+}
+function stopRoundTimer() {
+  if (roundTimerInt !== null) { clearInterval(roundTimerInt); roundTimerInt = null; }
+}
+
+// ---------- the "reveal the answer" pop-up (everyone locked in, or time is up) ----------
+function showRevealPopup(kind) {
+  if ($('revealPopup')) return;
+  const total = currentRound ? currentRound.players.length : 0, n = lockedCount();
+  const timeUp = kind === 'time';
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'revealPopup';
+  overlay.innerHTML = `
+    <div class="edit-card reveal-card">
+      <div class="big">${timeUp ? '⏱' : '🔒'}</div>
+      <h2>${timeUp ? "Time's up!" : 'Everyone is locked in!'}</h2>
+      <div class="hint">${timeUp ? (total ? n + ' of ' + total + ' locked in. ' : '') + 'Ready to find out who got it?' : 'All guesses are in. Ready to find out who got it?'}</div>
+      <button id="revealGo">🎉 Reveal the answer</button>
+      ${timeUp ? '<button id="revealWait" class="ghost">⏳ Wait a little longer</button>' : ''}
+    </div>`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  $('revealGo').addEventListener('click', () => resolveRound('complete'));
+  if (timeUp) $('revealWait').addEventListener('click', hideRevealPopup);
+}
+function hideRevealPopup() {
+  const p = $('revealPopup');
+  if (!p) return;
+  p.classList.remove('show');
+  setTimeout(() => p.remove(), 250);
+}
+
+// ---------- the fun fact, very large, over the wheel and QR code ----------
+function positionFactOver() {
+  const box = $('factOver');
+  if (!box || box.hidden || box.classList.contains('min')) return;
+  if (window.innerWidth <= 1000) { box.style.left = box.style.right = box.style.top = box.style.height = ''; return; }
+  const grid = document.querySelector('.presenter-grid'), stage = document.querySelector('.stage'), ctl = document.querySelector('.stage-controls');
+  const g = grid.getBoundingClientRect(), s = stage.getBoundingClientRect(), c = ctl.getBoundingClientRect();
+  box.style.left = (s.left - g.left) + 'px';   // starts where the wheel starts and runs over the QR code
+  box.style.right = '0px';
+  box.style.top = '0px';
+  box.style.height = Math.max(160, c.top - g.top - 12) + 'px';   // stops just above the Spin / Reveal buttons
+}
+function fitFactText() {
+  const box = $('factOver');
+  if (!box || box.hidden || box.classList.contains('min')) return;
+  const body = box.querySelector('.fo-body'), el = $('foFact');
+  let size = Math.min(box.clientHeight * 0.2, box.clientWidth * 0.085, 110);
+  el.style.fontSize = size + 'px';
+  for (let i = 0; i < 40 && (el.scrollHeight > el.clientHeight + 1 || body.scrollHeight > body.clientHeight + 1) && size > 16; i++) { size *= 0.93; el.style.fontSize = size + 'px'; }
+}
+function syncFoToggle() {
+  const box = $('factOver'), b = $('foToggle');
+  if (box && b) b.textContent = box.classList.contains('min') ? '📄 Show the fun fact' : '🎡 Show wheel & QR';
+}
+function paintFactOver() {
+  const box = $('factOver');
+  if (!box) return;
+  let label, fact, foot;
+  if (roundIsOpen()) {
+    const r = currentRound, total = r.players.length, n = lockedCount();
+    const count = total ? '✋ ' + n + ' / ' + total + ' locked in' : '✋ ' + n + ' locked in';
+    label = '🕵️ Whose fun fact is this?';
+    fact = r.factText;
+    foot = r.allIn ? '✅ Everyone is locked in' : (r.timeUp || roundLeft() <= 0) ? "⏱ Time's up · " + count : '⏱ ' + fmtClock(roundLeft()) + ' · ' + count;
+  } else if (phase === 'story' && lastRound) {
+    fact = lastRound.fact;
+    if (lastRound.solved) { label = '🎉 It was ' + lastRound.person + '!'; foot = '✅ ' + lastRound.winners.length + ' got it: ' + lastRound.winners.join(', '); }
+    else { label = '😮 Nobody got it!'; foot = 'Fun fact owner, tell us the story!'; }
+  } else { box.hidden = true; return; }
+  box.hidden = false;
+  $('foLabel').textContent = label;
+  $('foFoot').textContent = foot;
+  const sig = label + '|' + fact;
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    $('foText').textContent = '"' + fact + '"';
+    positionFactOver();
+    fitFactText();
+  }
+}
+
 
 async function resolveRound(reason) {
   if (!currentRound || currentRound.resolved) return;
   currentRound.resolved = true;
+  hideRevealPopup();
+  stopRoundTimer();
   Music.stop();
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   updateSpinButtons();
@@ -1350,17 +1513,15 @@ async function resolveRound(reason) {
   const correct = logRows.filter(g => g.guesser !== owner && g.guess === owner);
   const solved = correct.length > 0;
   const winners = correct.map(g => g.guesser);
-  const first = solved ? winners[0] : null;
-  const others = winners.slice(1);
-  logReveal = { solved, owner, first };
+  logReveal = { solved, owner };
   renderGuessLog();
 
   if (solved) {
     Music.ding();
-    await sb.from('ff_round').update({ status: 'solved', winner: first, solved_identity: owner, winners }).eq('id', true);
-    for (const name of winners) await bumpScoreboard(name, name === first);
-    $('roundStatus').textContent = `🎉 It was ${owner}! ⭐ ${first} guessed it first!`;
-    $('roundFact').textContent = `"${round.factText}"` + (others.length ? ` · Also got it: ${others.join(', ')}` : '');
+    await sb.from('ff_round').update({ status: 'solved', winner: null, solved_identity: owner, winners }).eq('id', true);
+    for (const name of winners) await bumpScoreboard(name);
+    $('roundStatus').textContent = `🎉 It was ${owner}! ${winners.length} ${winners.length === 1 ? 'person' : 'people'} got it!`;
+    $('roundFact').textContent = `"${round.factText}" · Got it: ${winners.join(', ')}`;
     launchConfetti();
   } else {
     // Stumped the room: the owner earns a prize, recorded in the hidden host controls only.
@@ -1379,11 +1540,12 @@ async function resolveRound(reason) {
   await saveWeek(w);
   await sb.from('ff_guesses').delete().eq('round_id', round.roundId);
 
-  lastRound = { person: owner, fact: round.factText, solved, first, others };
+  lastRound = { person: owner, fact: round.factText, solved, winners };
   currentRound = null;
   phase = 'story';
   showStoryPill();
   renderLastRound();
+  paintFactOver();
   updateSpinButtons();
   await Promise.all([refreshWeekStatus(), refreshWinners()]);
 }
@@ -1393,6 +1555,7 @@ function finishStory() {
   if (phase !== 'story') return;
   phase = 'idle';
   hideTimer();
+  paintFactOver();
   showGuessLog(false);
   const left = week.slots.length;
   $('roundStatus').textContent = left ? 'Ready when you are.' : "🏁 That's every fun fact!";
@@ -1400,12 +1563,11 @@ function finishStory() {
   updateSpinButtons();
 }
 
-// Everyone who guessed right gets a point; the first of them is also counted as "first".
-async function bumpScoreboard(name, isFirst) {
+// Everyone who guessed right gets the same point.
+async function bumpScoreboard(name) {
   const { data } = await sb.from('ff_scoreboard').select('*').eq('name', name).maybeSingle();
   const correctGuesses = ((data && data.correct_guesses) || 0) + 1;
-  const firstGuesses = ((data && data.first_guesses) || 0) + (isFirst ? 1 : 0);
-  await sb.from('ff_scoreboard').upsert({ name, correct_guesses: correctGuesses, first_guesses: firstGuesses });
+  await sb.from('ff_scoreboard').upsert({ name, correct_guesses: correctGuesses });
 }
 
 async function bumpUnguessed(name) {
@@ -1428,9 +1590,12 @@ async function shuffleWeek() {
 
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   Music.stop();
+  stopRoundTimer();
+  hideRevealPopup();
   hideTimer();
   showGuessLog(false);
   currentRound = null; phase = 'idle'; lastRound = null; logReveal = null;
+  paintFactOver();
   renderLastRound();
 
   const stamp = new Date().toISOString();
@@ -1811,7 +1976,7 @@ async function refreshRound() {
   const { data } = await sb.from('ff_round').select('*').eq('id', true).maybeSingle();
   guestRound = data ? {
     roundId: data.round_id, status: data.status, factText: data.fact_text,
-    winner: data.winner, solvedIdentity: data.solved_identity, winners: data.winners || [],
+    solvedIdentity: data.solved_identity, winners: data.winners || [],
   } : null;
   renderFactBanner();
   checkOwner();
@@ -1829,12 +1994,34 @@ async function checkOwner() {
   renderFactBanner();
 }
 
+// Guests count down too. It starts from the host's round clock unless this phone's clock is
+// wildly different, in which case it just counts from the moment the round appeared.
+function syncGuestTimer() {
+  const open = guestRound && guestRound.status === 'open';
+  if (!open) { clearInterval(guestTimerInt); guestTimerInt = null; guestRoundKey = null; return; }
+  if (guestRoundKey !== guestRound.roundId) {
+    guestRoundKey = guestRound.roundId;
+    const fromId = roundStartFromId(guestRound.roundId);
+    const elapsed = (Date.now() - fromId) / 1000;
+    guestStartMs = (elapsed >= -3 && elapsed <= ROUND_SECONDS + 3) ? fromId : Date.now();
+  }
+  if (!guestTimerInt) guestTimerInt = setInterval(paintGuestTimer, 500);
+  queueMicrotask(paintGuestTimer);   // the banner is rebuilt right after this call
+}
+function paintGuestTimer() {
+  const el = $('guestTimer');
+  if (!el) return;
+  const left = Math.max(0, ROUND_SECONDS - (Date.now() - guestStartMs) / 1000);
+  el.textContent = left > 0 ? '⏱ ' + fmtClock(left) : "⏱ Time's up";
+  el.classList.toggle('urgent', left <= 10);
+}
+
 function renderGuest() {
   const app = $('app');
   app.innerHTML = `
     <div class="top">
       <h1>🕵️ Crew Clues</h1>
-      <p>Guess whose fun fact just came up. Everyone gets one guess, and the answer shows when everybody is in.</p>
+      <p>Guess whose fun fact just came up. You get one guess and 90 seconds, then the host reveals the answer.</p>
       <button class="role-switch" id="showHostLoginBtn">Hosting this round? Log in</button>
       <div class="host-login-form" id="hostLoginForm">
         <input type="password" id="passcodeInput" placeholder="Host passcode" autocomplete="current-password">
@@ -1934,6 +2121,8 @@ function renderIdentity() {
 function renderFactBanner() {
   const el = $('factBanner');
   if (!el) return;
+  syncGuestTimer();
+  const timer = '<div class="guest-timer" id="guestTimer"></div>';
 
   if (!guestRound || !guestRound.status || guestRound.status === 'idle') {
     el.innerHTML = `<div class="empty-note"><div class="big">⏳</div>Waiting for the host to spin the wheel…</div>`;
@@ -1944,22 +2133,20 @@ function renderFactBanner() {
   const iAmOwner = ownerCheck.roundId === rid && ownerCheck.name === myGuestName && ownerCheck.isOwner;
 
   if (guestRound.status === 'solved') {
-    const winners = guestRound.winners.length ? guestRound.winners : [guestRound.winner].filter(Boolean);
-    const others = winners.filter(n => n !== guestRound.winner);
+    const winners = guestRound.winners;
     let me = '';
     if (myGuestName) {
       if (myGuestName === guestRound.solvedIdentity) me = `<div class="mine ok">🤫 That was your fun fact!</div>`;
-      else if (myGuestName === guestRound.winner) me = `<div class="mine ok">⭐ You got it, and you were first!</div>`;
       else if (winners.includes(myGuestName)) me = `<div class="mine ok">✅ You got it!</div>`;
       else if (mine) me = `<div class="mine bad">❌ You guessed <b>${esc(mine)}</b></div>`;
       else me = `<div class="mine">You sat this one out.</div>`;
     }
     el.innerHTML = `
       <div class="reveal">
-        <div class="status">🎉 Everyone's in!</div>
+        <div class="status">🎉 The answer is…</div>
         <div class="name">${esc(guestRound.solvedIdentity)}</div>
         ${me}
-        <div class="sub">⭐ ${esc(guestRound.winner)} guessed it first${others.length ? ` · also right: ${others.map(esc).join(', ')}` : ''}</div>
+        <div class="sub">✅ Got it: ${winners.map(esc).join(', ')}</div>
         <div class="sub">🎤 Story time. ${esc(guestRound.solvedIdentity)} may share more about it.</div>
       </div>`;
     return;
@@ -1970,23 +2157,24 @@ function renderFactBanner() {
   }
 
   if (!myGuestName) {
-    el.innerHTML = `<div class="status">🕵️ A fun fact is up for grabs!</div><div class="fact-text">"${esc(guestRound.factText)}"</div><div class="sub">Pick your name above to guess.</div>`;
+    el.innerHTML = `${timer}<div class="status">🕵️ A fun fact is up for grabs!</div><div class="fact-text">"${esc(guestRound.factText)}"</div><div class="sub">Pick your name above to guess.</div>`;
     return;
   }
 
   if (mine) {
     el.innerHTML = iAmOwner
-      ? `<div class="status">🤫 This one's yours!</div>
+      ? `${timer}<div class="status">🤫 This one's yours!</div>
          <div class="fact-text">"${esc(guestRound.factText)}"</div>
          <div class="sub">You're locked in. Keep a poker face while everyone else guesses.</div>`
-      : `<div class="status">🔒 You're locked in</div>
+      : `${timer}<div class="status">🔒 You're locked in</div>
          <div class="fact-text">"${esc(guestRound.factText)}"</div>
-         <div class="sub">You picked <strong>${esc(mine)}</strong>. The answer shows once everyone has guessed.</div>`;
+         <div class="sub">You picked <strong>${esc(mine)}</strong>. The host reveals the answer once everyone has guessed.</div>`;
     return;
   }
 
   if (iAmOwner) {
     el.innerHTML = `
+      ${timer}
       <div class="status">🤫 This one's yours!</div>
       <div class="fact-text">"${esc(guestRound.factText)}"</div>
       <div class="sub">Keep a poker face. Tap below so the game knows you're ready for the reveal.</div>
@@ -1996,9 +2184,10 @@ function renderFactBanner() {
   }
 
   el.innerHTML = `
+    ${timer}
     <div class="status">🕵️ Who's it about?</div>
     <div class="fact-text">"${esc(guestRound.factText)}"</div>
-    <div class="sub">One guess each. The answer shows once everyone has guessed.</div>
+    <div class="sub">One guess each. The host reveals the answer once everyone has guessed.</div>
     <div class="guess-grid" id="guessGrid" style="margin-top:14px;"></div>
   `;
   const grid = $('guessGrid');
