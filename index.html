@@ -682,9 +682,39 @@ const Music = (() => {
       nextTime += STEP; step++;
     }
   }
+  // The music that plays while guessing is open: elevator-music.wav, sitting next to this page.
+  // If it can't be loaded or played, the built-in tune below is used instead.
+  const TRACK_URL = 'elevator-music.wav', TRACK_VOL = 0.55;
+  let track = null, trackPlaying = false, fadeInt = null;
+  function trackEl() {
+    if (!track) { track = new Audio(TRACK_URL); track.loop = true; track.preload = 'auto'; }
+    return track;
+  }
+  function trackStart(self) {
+    const el = trackEl();
+    clearInterval(fadeInt);
+    el.volume = TRACK_VOL;
+    try { el.currentTime = 0; } catch (e) {}
+    trackPlaying = true;
+    const p = el.play();
+    if (p && p.catch) p.catch(() => { trackPlaying = false; if (enabled) self.startTune(); });
+    return true;
+  }
+  function trackStop() {
+    if (!track || !trackPlaying) return;
+    trackPlaying = false;
+    clearInterval(fadeInt);
+    const el = track;
+    let v = el.volume;
+    fadeInt = setInterval(() => {   // quick fade-out
+      v -= TRACK_VOL / 8;
+      if (v <= 0.02) { clearInterval(fadeInt); el.pause(); el.volume = TRACK_VOL; } else el.volume = v;
+    }, 50);
+  }
   const live = () => enabled && ctx && ctx.state === 'running';
   return {
     unlock() {
+      trackEl();   // start fetching the music file
       if (!ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
@@ -699,6 +729,11 @@ const Music = (() => {
       if (ctx.state === 'suspended') ctx.resume();
     },
     start() {
+      if (!enabled) return;
+      if (trackStart(this)) return;
+      this.startTune();
+    },
+    startTune() {
       if (!enabled || !ctx || timer) return;
       master.gain.cancelScheduledValues(ctx.currentTime);
       master.gain.setValueAtTime(0.5, ctx.currentTime);
@@ -707,6 +742,7 @@ const Music = (() => {
       timer = setInterval(schedule, 100);
     },
     stop() {
+      trackStop();
       if (!timer) return;
       clearInterval(timer); timer = null;
       master.gain.cancelScheduledValues(ctx.currentTime);
@@ -753,7 +789,8 @@ const Music = (() => {
     },
     setEnabled(on) { enabled = on; localStorage.setItem('cc.music', on ? 'on' : 'off'); if (!on) this.stop(); },
     isEnabled() { return enabled; },
-    isPlaying() { return !!timer; },
+    isPlaying() { return !!timer || trackPlaying; },
+    preload() { trackEl(); },
   };
 })();
 
@@ -966,6 +1003,7 @@ function initHost() {
   }
 
   buildQr();
+  Music.preload();
   $('foToggle').addEventListener('click', () => {
     const box = $('factOver');
     box.classList.toggle('min');
