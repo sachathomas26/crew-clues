@@ -440,6 +440,12 @@
   .fact-over.min .fo-body { display: none; }
   .fact-over.min .fo-toggle { position: static; }
   @media (max-width: 1000px) { .fact-over { position: relative; order: -2; height: auto !important; left: auto !important; min-height: 46vh; } }
+  .owner-alert { background: rgba(255,93,143,.2); border: 2px solid var(--accent-2); border-radius: 16px; padding: 14px 14px 12px; margin-bottom: 12px; animation: ownerPulse 1.3s ease-in-out infinite; }
+  .oa-title { font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 1.35rem; color: #fff; }
+  .oa-text { margin-top: 6px; font-size: 1.02rem; line-height: 1.35; }
+  .owner-lock { width: 100%; margin-top: 16px; padding: 20px; font-size: 1.5rem; letter-spacing: .03em; animation: ownerPulse 1.3s ease-in-out infinite; }
+  @keyframes ownerPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,93,143,.55); } 50% { box-shadow: 0 0 0 14px rgba(255,93,143,0); } }
+  @media (prefers-reduced-motion: reduce) { .owner-alert, .owner-lock { animation: none; } }
   .final-name { font-family: 'Fredoka', sans-serif; font-size: 1.9rem; font-weight: 700; color: var(--accent); margin: 4px 0; }
 </style>
 </head>
@@ -690,14 +696,31 @@ const Music = (() => {
     if (!track) { track = new Audio(TRACK_URL); track.loop = true; track.preload = 'auto'; }
     return track;
   }
+  // Browsers only let a page start sound after a real click, so the Spin click plays the file once,
+  // silently, which keeps it allowed to start again when the wheel lands a few seconds later.
+  let primed = false;
+  function primeTrack() {
+    const el = trackEl();
+    if (primed) return;
+    primed = true;
+    el.muted = true;
+    const p = el.play();
+    if (p && p.then) p.then(() => { if (!trackPlaying) { el.pause(); try { el.currentTime = 0; } catch (e) {} } el.muted = false; }).catch(() => { el.muted = false; primed = false; });
+  }
   function trackStart(self) {
     const el = trackEl();
     clearInterval(fadeInt);
     el.volume = TRACK_VOL;
+    el.muted = false;
     try { el.currentTime = 0; } catch (e) {}
     trackPlaying = true;
     const p = el.play();
-    if (p && p.catch) p.catch(() => { trackPlaying = false; if (enabled) self.startTune(); });
+    if (p && p.catch) p.catch((e) => {
+      trackPlaying = false;
+      console.warn('Music file could not play', e);
+      try { toast("Couldn't play the music file (" + ((e && e.name) || 'error') + '). Playing the built-in tune instead.'); } catch (x) {}
+      if (enabled) self.startTune();
+    });
     return true;
   }
   function trackStop() {
@@ -714,7 +737,7 @@ const Music = (() => {
   const live = () => enabled && ctx && ctx.state === 'running';
   return {
     unlock() {
-      trackEl();   // start fetching the music file
+      primeTrack();   // the Spin click is a real user action: use it to unlock the music file
       if (!ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
@@ -951,7 +974,7 @@ function initHost() {
 
     <section class="admin" id="adminPanel" hidden>
       <h2>Host controls</h2>
-      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen.</div>
+      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 21 Oct · owner lock-in + stump reveal)</span></div>
       <div class="admin-grid">
         <div class="panel players-card">
           <div class="eyebrow">👥 Who's joined</div>
@@ -1090,7 +1113,7 @@ function renderGuessLog() {
   const colorOf = n => WHEEL_COLORS[Math.max(0, ALL_NAMES.indexOf(n)) % WHEEL_COLORS.length];
   const av = n => `<span class="av" style="background:${colorOf(n)}">${esc(n.charAt(0))}</span>`;
 
-  if (logReveal && logReveal.solved) {
+  if (logReveal) {
     const owner = logReveal.owner;
     const rows = logRows.filter(g => g.guesser !== owner);
     const right = rows.filter(g => g.guess === owner), wrong = rows.filter(g => g.guess !== owner);
@@ -1519,7 +1542,7 @@ function paintFactOver() {
   } else if (phase === 'story' && lastRound) {
     fact = lastRound.fact;
     if (lastRound.solved) { label = '🎉 It was ' + lastRound.person + '!'; foot = '✅ ' + lastRound.winners.length + ' got it: ' + lastRound.winners.join(', '); }
-    else { label = '😮 Nobody got it!'; foot = 'Fun fact owner, tell us the story!'; }
+    else { label = '😮 Nobody got it! It was ' + lastRound.person + "'s!"; foot = '🎁 ' + lastRound.person + ' stumped the room and wins a prize!'; }
   } else { box.hidden = true; return; }
   box.hidden = false;
   $('foLabel').textContent = label;
@@ -1562,12 +1585,11 @@ async function resolveRound(reason) {
     $('roundFact').textContent = `"${round.factText}" · Got it: ${winners.join(', ')}`;
     launchConfetti();
   } else {
-    // Stumped the room: the owner earns a prize, recorded in the hidden host controls only.
-    // Their name stays off this shared screen; they'll speak up for their own story.
+    // Stumped the room: the owner is revealed and earns a prize.
     Music.buzz();
-    await sb.from('ff_round').update({ status: 'closed_unsolved', winners: [] }).eq('id', true);
+    await sb.from('ff_round').update({ status: 'closed_unsolved', solved_identity: owner, winners: [] }).eq('id', true);
     await bumpUnguessed(owner);
-    $('roundStatus').textContent = "😮 Nobody got it! Fun fact owner, share the story if you'd like.";
+    $('roundStatus').textContent = `😮 Nobody got it! It was ${owner}'s fun fact. 🎁`;
     $('roundFact').textContent = `"${round.factText}"`;
   }
 
@@ -2030,6 +2052,13 @@ async function checkOwner() {
   if (error) return;
   ownerCheck = { roundId: rid, name: myGuestName, isOwner: !!data };
   renderFactBanner();
+  clearInterval(window.__ownerNag);
+  if (data && navigator.vibrate) {
+    const pending = () => guestRound && guestRound.status === 'open' && guestRound.roundId === rid && ownerCheck.isOwner && !localStorage.getItem('ffGuest.guessed.' + rid);
+    const buzz = () => { try { navigator.vibrate([250, 120, 250, 120, 250]); } catch (e) {} };
+    if (pending()) buzz();
+    window.__ownerNag = setInterval(() => { if (pending()) buzz(); else clearInterval(window.__ownerNag); }, 15000);
+  }
 }
 
 // Guests count down too. It starts from the host's round clock unless this phone's clock is
@@ -2190,7 +2219,8 @@ function renderFactBanner() {
     return;
   }
   if (guestRound.status === 'closed_unsolved') {
-    el.innerHTML = `<div class="empty-note"><div class="big">${iAmOwner ? '🎁' : '😮'}</div>${iAmOwner ? "You stumped everyone! Share the story if you'd like." : "Nobody got it! Whoever's fun fact that was may share the story now."}</div>`;
+    const isOwn = iAmOwner || (myGuestName && myGuestName === guestRound.solvedIdentity);
+    el.innerHTML = `<div class="empty-note"><div class="big">${isOwn ? '🎁' : '😮'}</div>${isOwn ? "You stumped everyone! 🎉 Share the story if you'd like." : `Nobody got it! It was <b>${esc(guestRound.solvedIdentity || 'someone')}</b>'s fun fact.`}</div>`;
     return;
   }
 
@@ -2203,7 +2233,7 @@ function renderFactBanner() {
     el.innerHTML = iAmOwner
       ? `${timer}<div class="status">🤫 This one's yours!</div>
          <div class="fact-text">"${esc(guestRound.factText)}"</div>
-         <div class="sub">You're locked in. Keep a poker face while everyone else guesses.</div>`
+         <div class="sub">✅ You're locked in, thank you! Keep a poker face while everyone else guesses.</div>`
       : `${timer}<div class="status">🔒 You're locked in</div>
          <div class="fact-text">"${esc(guestRound.factText)}"</div>
          <div class="sub">You picked <strong>${esc(mine)}</strong>. The host reveals the answer once everyone has guessed.</div>`;
@@ -2213,10 +2243,12 @@ function renderFactBanner() {
   if (iAmOwner) {
     el.innerHTML = `
       ${timer}
-      <div class="status">🤫 This one's yours!</div>
+      <div class="owner-alert">
+        <div class="oa-title">🚨 THIS FUN FACT IS YOURS!</div>
+        <div class="oa-text">Everyone is waiting for you. <b>Tap LOCK IN</b> so the game can move on, then keep a poker face. 😎</div>
+      </div>
       <div class="fact-text">"${esc(guestRound.factText)}"</div>
-      <div class="sub">Keep a poker face. Tap below so the game knows you're ready for the reveal.</div>
-      <button id="ownerLock" style="margin-top:14px;">🔒 Lock in</button>`;
+      <button id="ownerLock" class="owner-lock">🔒 LOCK IN</button>`;
     $('ownerLock').addEventListener('click', () => submitGuess(myGuestName));
     return;
   }
