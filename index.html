@@ -450,6 +450,7 @@
   .lr-head { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px; }
   .lr-fact { font-style: italic; margin: 4px 0 6px; color: var(--text); }
   .round-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--panel-line); text-align: center; }
+  .result-when { font-size: .88rem; font-weight: 700; color: var(--text-dim); margin-bottom: 10px; text-align: center; }
   .rf-date { font-size: .85rem; font-weight: 600; color: var(--text-faint); }
   .rf-wait { margin-top: 6px; font-size: .95rem; color: var(--text-dim); }
   .final-name { font-family: 'Fredoka', sans-serif; font-size: 1.9rem; font-weight: 700; color: var(--accent); margin: 4px 0; }
@@ -983,7 +984,7 @@ function initHost() {
 
     <section class="admin" id="adminPanel" hidden>
       <h2>Host controls</h2>
-      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 9 Nov · dates + waiting note)</span></div>
+      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 9 Nov · result layout)</span></div>
       <div class="admin-grid">
         <div class="panel players-card">
           <div class="eyebrow">👥 Who's joined</div>
@@ -2215,9 +2216,14 @@ function whenLabel(rid) {
   if (d.toDateString() === new Date().toDateString()) return 'Today, ' + time;
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + time;
 }
-// Under a result: when it happened, and that the host still has to spin for another round.
+// Above a result: when it happened ("Last round" if it was an earlier meeting).
+function resultWhen(rid) {
+  const old = Date.now() - roundStartFromId(rid) > FRESH_RESULT_MS;
+  return `<div class="result-when">📅 ${old ? 'Last round · ' : ''}${whenLabel(rid)}</div>`;
+}
+// Under a result: the host still has to spin for another round.
 function roundFooter(rid) {
-  return `<div class="round-footer"><div class="rf-date">📅 ${whenLabel(rid)}</div><div class="rf-wait">⏳ Waiting for the host to spin the wheel for another round…</div></div>`;
+  return `<div class="round-footer"><div class="rf-wait">⏳ Waiting for the host to spin the wheel for another round…</div></div>`;
 }
 
 // "Last time" card for the waiting screen: what happened in the most recent finished round.
@@ -2246,11 +2252,6 @@ function renderFactBanner() {
   const rid = guestRound.roundId;
   const finished = guestRound.status === 'solved' || guestRound.status === 'closed_unsolved';
   const age = rid ? Date.now() - roundStartFromId(rid) : 0;
-  if (finished && age > FRESH_RESULT_MS) {
-    // from an earlier meeting: don't present it as what just happened
-    el.innerHTML = `<div class="empty-note"><div class="big">⏳</div>Waiting for the host to spin the wheel…</div>${lastResultCard()}`;
-    return;
-  }
   if (guestRound.status === 'open' && age > STALE_ROUND_MS) {
     el.innerHTML = `<div class="empty-note"><div class="big">⏳</div>Waiting for the host to spin the wheel…</div>`;
     return;
@@ -2269,18 +2270,19 @@ function renderFactBanner() {
     }
     el.innerHTML = `
       <div class="reveal">
+        ${resultWhen(rid)}
         <div class="status">🎉 The answer is…</div>
         <div class="name">${esc(guestRound.solvedIdentity)}</div>
         ${me}
         <div class="sub">✅ Got it: ${winners.map(esc).join(', ')}</div>
-        <div class="sub">🎤 Story time. ${esc(guestRound.solvedIdentity)} may share more about it.</div>
+        ${age < 30 * 60000 ? `<div class="sub">🎤 Story time. ${esc(guestRound.solvedIdentity)} may share more about it.</div>` : ''}
         ${roundFooter(rid)}
       </div>`;
     return;
   }
   if (guestRound.status === 'closed_unsolved') {
     const isOwn = iAmOwner || (myGuestName && myGuestName === guestRound.solvedIdentity);
-    el.innerHTML = `<div class="empty-note"><div class="big">${isOwn ? '🎁' : '😮'}</div>${isOwn ? "You stumped everyone! 🎉 Share the story if you'd like." : `Nobody got it! It was <b>${esc(guestRound.solvedIdentity || 'someone')}</b>'s fun fact.`}${roundFooter(rid)}</div>`;
+    el.innerHTML = `<div class="empty-note">${resultWhen(rid)}<div class="big">${isOwn ? '🎁' : '😮'}</div>${isOwn ? "You stumped everyone! 🎉 Share the story if you'd like." : `Nobody got it! It was <b>${esc(guestRound.solvedIdentity || 'someone')}</b>'s fun fact.`}${roundFooter(rid)}</div>`;
     return;
   }
 
