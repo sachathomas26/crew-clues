@@ -446,6 +446,9 @@
   .owner-lock { width: 100%; margin-top: 16px; padding: 20px; font-size: 1.5rem; letter-spacing: .03em; animation: ownerPulse 1.3s ease-in-out infinite; }
   @keyframes ownerPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,93,143,.55); } 50% { box-shadow: 0 0 0 14px rgba(255,93,143,0); } }
   @media (prefers-reduced-motion: reduce) { .owner-alert, .owner-lock { animation: none; } }
+  .last-result { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid var(--panel-line); font-size: .95rem; color: var(--text-dim); text-align: center; line-height: 1.4; }
+  .lr-head { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px; }
+  .lr-fact { font-style: italic; margin: 4px 0 6px; color: var(--text); }
   .final-name { font-family: 'Fredoka', sans-serif; font-size: 1.9rem; font-weight: 700; color: var(--accent); margin: 4px 0; }
 </style>
 </head>
@@ -511,6 +514,7 @@ function roundStartFromId(id) {
 
 
 // ===================== STATE =====================
+const FRESH_RESULT_MS = 4 * 60 * 60 * 1000;   // a finished round counts as "just happened" for this long
 const STALE_ROUND_MS = 12 * 60 * 60 * 1000;   // an "open" round older than this is left over from an earlier meeting
 const ROUND_SECONDS = 90;                      // guessing time once the wheel has landed
 
@@ -537,6 +541,7 @@ let guestRound = null;
 let myGuestName = localStorage.getItem('ffGuest.myName') || null;
 let ownerCheck = { roundId: null, name: null, isOwner: false };   // does the open round belong to THIS phone's name?
 let guestTimerInt = null, guestRoundKey = null, guestStartMs = 0;
+let lastRoundSig = null, guestPollInt = null;
 
 // ===================== WHO'S PLAYING (names people have claimed on their phones) =====================
 let rosterRows = [];   // [{ name, claimed, sort_order }]
@@ -857,6 +862,7 @@ function resetHostRuntime() {
   stopRoundTimer();
   hideRevealPopup();
   clearInterval(guestTimerInt); guestTimerInt = null; guestRoundKey = null;
+  clearInterval(guestPollInt); guestPollInt = null;
   clearChannels();
   if (unsubGuesses) { unsubGuesses(); unsubGuesses = null; }
   phase = 'idle'; hostSpinning = false; currentRound = null;
@@ -974,7 +980,7 @@ function initHost() {
 
     <section class="admin" id="adminPanel" hidden>
       <h2>Host controls</h2>
-      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 21 Oct · owner lock-in + stump reveal)</span></div>
+      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 9 Nov · cleaner guest screen)</span></div>
       <div class="admin-grid">
         <div class="panel players-card">
           <div class="eyebrow">👥 Who's joined</div>
@@ -2005,9 +2011,17 @@ async function openWeekFacts() {
 function initGuest() {
   document.body.classList.remove('host-mode');
   identityReady = false;
+  lastRoundSig = null;
   renderGuest();
   refreshRound();
   syncIdentity();
+  // Phones go to sleep and drop the live connection, so also look for news every few seconds and whenever the page comes back.
+  clearInterval(guestPollInt);
+  guestPollInt = setInterval(refreshRound, 8000);
+  if (!window.__guestVis) {
+    window.__guestVis = true;
+    document.addEventListener('visibilitychange', () => { if (!isHost && document.visibilityState === 'visible') { refreshRound(); syncIdentity(); } });
+  }
   trackChannel(sb.channel('guest-round').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_round' }, refreshRound).subscribe());
   // names other people claim (or Allie resets) show up here right away
   trackChannel(sb.channel('guest-roster').on('postgres_changes', { event: '*', schema: 'public', table: 'ff_roster' }, syncIdentity).subscribe());
@@ -2038,7 +2052,8 @@ async function refreshRound() {
     roundId: data.round_id, status: data.status, factText: data.fact_text,
     solvedIdentity: data.solved_identity, winners: data.winners || [],
   } : null;
-  renderFactBanner();
+  const sig = JSON.stringify(guestRound);
+  if (sig !== lastRoundSig) { lastRoundSig = sig; renderFactBanner(); }   // only redraw when something changed
   checkOwner();
 }
 
@@ -2089,7 +2104,7 @@ function renderGuest() {
     <div class="top">
       <h1>🕵️ Crew Clues</h1>
       <p>Guess whose fun fact just came up. You get one guess and 90 seconds, then the host reveals the answer.</p>
-      <button class="role-switch" id="showHostLoginBtn">Hosting this round? Log in</button>
+      <button class="role-switch" id="showHostLoginBtn" hidden>Hosting this round? Log in</button>
       <div class="host-login-form" id="hostLoginForm">
         <input type="password" id="passcodeInput" placeholder="Host passcode" autocomplete="current-password">
         <button id="passcodeSubmit">Go</button>
@@ -2103,6 +2118,11 @@ function renderGuest() {
   renderIdentity();
   renderFactBanner();
 
+  // Only the hosts need this. Guests never see it; the hosts open the page as .../crew-clues/?host
+  if (/[?&#]host\b/i.test(location.search + location.hash)) {
+    $('hostLoginForm').classList.add('show');
+    setTimeout(() => { const i = $('passcodeInput'); if (i) i.focus(); }, 50);
+  }
   $('showHostLoginBtn').addEventListener('click', () => {
     $('hostLoginForm').classList.toggle('show');
   });
@@ -2185,6 +2205,19 @@ function renderIdentity() {
   });
 }
 
+// "Last time" card for the waiting screen: what happened in the most recent finished round.
+function lastResultCard() {
+  const r = guestRound;
+  const when = new Date(roundStartFromId(r.roundId)).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const fact = r.factText ? `<div class="lr-fact">"${esc(r.factText)}"</div>` : '';
+  const who = esc(r.solvedIdentity || 'Someone');
+  const n = (r.winners || []).length;
+  const line = r.status === 'solved'
+    ? `It was <b>${who}</b>'s fun fact.${n ? ' ' + n + (n === 1 ? ' person' : ' people') + ' got it.' : ''}`
+    : `<b>${who}</b>'s fun fact stumped everyone. 🎁`;
+  return `<div class="last-result"><div class="lr-head">Last time · ${when}</div>${fact}<div>${line}</div></div>`;
+}
+
 function renderFactBanner() {
   const el = $('factBanner');
   if (!el) return;
@@ -2196,6 +2229,17 @@ function renderFactBanner() {
     return;
   }
   const rid = guestRound.roundId;
+  const finished = guestRound.status === 'solved' || guestRound.status === 'closed_unsolved';
+  const age = rid ? Date.now() - roundStartFromId(rid) : 0;
+  if (finished && age > FRESH_RESULT_MS) {
+    // from an earlier meeting: don't present it as what just happened
+    el.innerHTML = `<div class="empty-note"><div class="big">⏳</div>Waiting for the host to spin the wheel…</div>${lastResultCard()}`;
+    return;
+  }
+  if (guestRound.status === 'open' && age > STALE_ROUND_MS) {
+    el.innerHTML = `<div class="empty-note"><div class="big">⏳</div>Waiting for the host to spin the wheel…</div>`;
+    return;
+  }
   const mine = rid ? localStorage.getItem('ffGuest.guessed.' + rid) : null;
   const iAmOwner = ownerCheck.roundId === rid && ownerCheck.name === myGuestName && ownerCheck.isOwner;
 
