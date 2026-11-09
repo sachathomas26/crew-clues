@@ -449,6 +449,9 @@
   .last-result { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid var(--panel-line); font-size: .95rem; color: var(--text-dim); text-align: center; line-height: 1.4; }
   .lr-head { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px; }
   .lr-fact { font-style: italic; margin: 4px 0 6px; color: var(--text); }
+  .round-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--panel-line); text-align: center; }
+  .rf-date { font-size: .85rem; font-weight: 600; color: var(--text-faint); }
+  .rf-wait { margin-top: 6px; font-size: .95rem; color: var(--text-dim); }
   .final-name { font-family: 'Fredoka', sans-serif; font-size: 1.9rem; font-weight: 700; color: var(--accent); margin: 4px 0; }
 </style>
 </head>
@@ -980,7 +983,7 @@ function initHost() {
 
     <section class="admin" id="adminPanel" hidden>
       <h2>Host controls</h2>
-      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 9 Nov · cleaner guest screen)</span></div>
+      <div class="admin-note">Winners, prizes and setup. Hide this again before you share your screen. <span style="opacity:.6">(Page version: 9 Nov · dates + waiting note)</span></div>
       <div class="admin-grid">
         <div class="panel players-card">
           <div class="eyebrow">👥 Who's joined</div>
@@ -2205,10 +2208,22 @@ function renderIdentity() {
   });
 }
 
+// "Today, 10:42 AM" or "Mon, Nov 2, 10:42 AM" for the moment a round's guessing opened.
+function whenLabel(rid) {
+  const d = new Date(roundStartFromId(rid));
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return 'Today, ' + time;
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + time;
+}
+// Under a result: when it happened, and that the host still has to spin for another round.
+function roundFooter(rid) {
+  return `<div class="round-footer"><div class="rf-date">📅 ${whenLabel(rid)}</div><div class="rf-wait">⏳ Waiting for the host to spin the wheel for another round…</div></div>`;
+}
+
 // "Last time" card for the waiting screen: what happened in the most recent finished round.
 function lastResultCard() {
   const r = guestRound;
-  const when = new Date(roundStartFromId(r.roundId)).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const when = whenLabel(r.roundId);
   const fact = r.factText ? `<div class="lr-fact">"${esc(r.factText)}"</div>` : '';
   const who = esc(r.solvedIdentity || 'Someone');
   const n = (r.winners || []).length;
@@ -2259,12 +2274,13 @@ function renderFactBanner() {
         ${me}
         <div class="sub">✅ Got it: ${winners.map(esc).join(', ')}</div>
         <div class="sub">🎤 Story time. ${esc(guestRound.solvedIdentity)} may share more about it.</div>
+        ${roundFooter(rid)}
       </div>`;
     return;
   }
   if (guestRound.status === 'closed_unsolved') {
     const isOwn = iAmOwner || (myGuestName && myGuestName === guestRound.solvedIdentity);
-    el.innerHTML = `<div class="empty-note"><div class="big">${isOwn ? '🎁' : '😮'}</div>${isOwn ? "You stumped everyone! 🎉 Share the story if you'd like." : `Nobody got it! It was <b>${esc(guestRound.solvedIdentity || 'someone')}</b>'s fun fact.`}</div>`;
+    el.innerHTML = `<div class="empty-note"><div class="big">${isOwn ? '🎁' : '😮'}</div>${isOwn ? "You stumped everyone! 🎉 Share the story if you'd like." : `Nobody got it! It was <b>${esc(guestRound.solvedIdentity || 'someone')}</b>'s fun fact.`}${roundFooter(rid)}</div>`;
     return;
   }
 
